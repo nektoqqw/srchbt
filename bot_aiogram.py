@@ -205,14 +205,32 @@ def _ui_roll_spin_frame(tick: int) -> str:
     return _ui_roll_loading_head(tick)
 
 
-def _ui_frag_found(name: str) -> str:
+def _ui_frag_found(
+    name: str,
+    *,
+    rarity_name: str | None = None,
+    predicted_price: float | None = None,
+    why: str | None = None,
+) -> str:
     n = name.lower()
-    return (
+    body = (
         "<b>Есть совпадение</b>\n\n"
         f"<code>@{html.escape(n)}</code>\n\n"
+    )
+    if rarity_name and why is not None:
+        body += (
+            _rarity_metrics_html(
+                rarity_name=rarity_name,
+                predicted_price=predicted_price,
+                why=why,
+            )
+            + "\n\n"
+        )
+    body += (
         "<i>Похоже, лот не занят по данным витрины. Перед сменой @username загляните в профиль вручную — "
         "так спокойнее.</i>"
     )
+    return body
 
 
 def _ui_frag_fail() -> str:
@@ -724,6 +742,26 @@ def _luck_menu_html(uid: int, db: Database, roll_btn: str) -> str:
     )
 
 
+def _format_username(username: str) -> str:
+    return f"@{username.lower()}"
+
+
+def _rarity_metrics_html(
+    *,
+    rarity_name: str,
+    predicted_price: float | None,
+    why: str,
+) -> str:
+    """Блок «редкость + ориентир цены + пояснение» без заголовка крутки."""
+    usd_txt = "нет данных" if predicted_price is None else f"${predicted_price:,.0f}"
+    g = _rarity_glyph(rarity_name)
+    return (
+        f"{g} <b>Редкость:</b> <b>{html.escape(rarity_name)}</b>\n"
+        f"💵 <b>Ориентир цены:</b> <b>{usd_txt}</b>\n\n"
+        f"<i>{html.escape(why)}</i>"
+    )
+
+
 def _roll_result_card_html(
     *,
     uname: str,
@@ -732,8 +770,6 @@ def _roll_result_card_html(
     why: str,
     has_luck: bool,
 ) -> str:
-    usd_txt = "нет данных" if predicted_price is None else f"${predicted_price:,.0f}"
-    g = _rarity_glyph(rarity_name)
     tail = (
         "\n\n<i>🍀 Учтён режим «Удача»: приоритет удачных комбинаций.</i>"
         if has_luck
@@ -743,9 +779,11 @@ def _roll_result_card_html(
         "<b>Вам выпало</b>\n"
         f"{_format_username(uname)}\n"
         "<code>──────────</code>\n\n"
-        f"{g} <b>Редкость:</b> <b>{html.escape(rarity_name)}</b>\n"
-        f"💵 <b>Ориентир цены:</b> <b>{usd_txt}</b>\n\n"
-        f"<i>{html.escape(why)}</i>"
+        + _rarity_metrics_html(
+            rarity_name=rarity_name,
+            predicted_price=predicted_price,
+            why=why,
+        )
         + tail
     )
 
@@ -764,8 +802,37 @@ def kb_save(username: str) -> InlineKeyboardMarkup:
     )
 
 
-def _format_username(username: str) -> str:
-    return f"@{username.lower()}"
+def kb_appraisal_saves_many(usernames: list[str]) -> InlineKeyboardMarkup | None:
+    """Несколько кнопок «Сохранить» для пачки оценок (одна таблица saved_usernames)."""
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for raw in usernames:
+        if not is_valid_telegram_username(raw):
+            continue
+        u = normalize_username(raw)
+        if u in seen:
+            continue
+        seen.add(u)
+        ordered.append(u)
+        if len(ordered) >= 8:
+            break
+    if not ordered:
+        return None
+    rows: list[list[InlineKeyboardButton]] = []
+    row: list[InlineKeyboardButton] = []
+    for u in ordered:
+        row.append(
+            InlineKeyboardButton(
+                text=f"💾 @{u}",
+                callback_data=f"save:{u}",
+            )
+        )
+        if len(row) >= 2:
+            rows.append(row)
+            row = []
+    if row:
+        rows.append(row)
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def parse_usernames_from_user_input(text: str) -> list[str]:
@@ -936,18 +1003,24 @@ async def perform_appraisals_batch(
         if settings.bot_mode == "fragment"
         else kb_v2_main(uid=uid, settings=settings)
     )
-    kb_reply: InlineKeyboardMarkup | ReplyKeyboardMarkup = kb_main
+    kb_inline: InlineKeyboardMarkup | None = None
     if single_one:
         t0 = tokens[0]
         if settings.bot_mode == "telethon":
-            kb_reply = kb_valuation_post_single(t0, is_plus=db.is_plus(uid))
+            kb_inline = kb_valuation_post_single(t0, is_plus=db.is_plus(uid))
         elif db.is_plus(uid):
-            kb_reply = kb_save(t0)
+            kb_inline = kb_save(t0)
+    elif db.is_plus(uid):
+        kb_inline = kb_appraisal_saves_many(tokens)
+
+    markup_reply: InlineKeyboardMarkup | ReplyKeyboardMarkup = (
+        kb_inline if kb_inline is not None else kb_main
+    )
 
     body = header + "\n\n".join(blocks)
     max_len = 3800
     if len(body) <= max_len:
-        await message.answer(body, reply_markup=kb_reply, parse_mode="HTML")
+        await message.answer(body, reply_markup=markup_reply, parse_mode="HTML")
         return
 
     for i, b in enumerate(blocks):
@@ -955,7 +1028,7 @@ async def perform_appraisals_batch(
         await message.answer(
             h + b,
             parse_mode="HTML",
-            reply_markup=kb_reply if i == len(blocks) - 1 else None,
+            reply_markup=markup_reply if i == len(blocks) - 1 else None,
         )
 
 
@@ -1563,8 +1636,8 @@ async def on_callback_frag(
         names = db.list_saved(uid)
         if not names:
             await cb.message.edit_text(
-                f"<b>Пока пусто.</b> Сначала найдите имя через «{html.escape(BTN_SEARCH_F)}», "
-                "затем нажмите <b>«Сохранить никнейм»</b>.",
+                f"<b>Пока пусто.</b> Сохраняйте @ники кнопкой <b>«Сохранить»</b> после "
+                f"«{html.escape(BTN_SEARCH_F)}» или после <b>оценки</b> в «{html.escape(BTN_VALUATE_F)}».",
                 parse_mode="HTML",
             )
             return
@@ -1800,6 +1873,23 @@ async def on_callback_frag(
             return
 
         log.debug(" найден за %s шагов", attempts)
+        rarity_name: str | None = None
+        predicted_price: float | None = None
+        why_r: str | None = None
+        try:
+            ri, predicted_price, why_r = _rarity_for_display(
+                found_name, db, settings.ton_to_usd
+            )
+            rarity_name = ri.name
+            db.add_roll_event(
+                user_id=uid,
+                username=found_name.lower(),
+                rarity=rarity_name,
+                predicted_price_usd=predicted_price,
+            )
+        except Exception:
+            log.exception("rarity/roll_event for fragment pick")
+
         kb_row = []
         if db.is_plus(uid):
             kb_row = [
@@ -1830,7 +1920,13 @@ async def on_callback_frag(
         await bot.edit_message_text(
             chat_id=chat_id,
             message_id=msg_id,
-            text=_ui_frag_found(found_name) + tail,
+            text=_ui_frag_found(
+                found_name,
+                rarity_name=rarity_name,
+                predicted_price=predicted_price,
+                why=why_r,
+            )
+            + tail,
             parse_mode="HTML",
             reply_markup=kb,
         )
@@ -2588,8 +2684,8 @@ async def on_callback_v2(cb: CallbackQuery, db: Database, settings: Settings, ch
         names = db.list_saved(uid)
         if not names:
             await cb.message.edit_text(
-                f"<b>Пока пусто.</b> Сначала найдите имя через «{html.escape(BTN_ROLL)}», "
-                "затем сохраните его.",
+                "<b>Пока пусто.</b> Сохраняйте @ники кнопкой <b>«Сохранить»</b> после крутки "
+                f"или после <b>оценки</b> («{html.escape(BTN_VALUATE)}»).",
                 parse_mode="HTML",
             )
             return
