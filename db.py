@@ -9,11 +9,14 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from threading import Lock
-from typing import Generator, Iterable, Optional
+from typing import Generator, Iterable, Literal, Optional
 
 from plus_tariffs import PLUS_TARIFFS
 
 _DB_LOCK = Lock()
+
+# Максимум сохранённых @ников на одного пользователя (PLUS).
+SAVED_USERNAMES_LIMIT = 20
 
 
 @dataclass
@@ -778,21 +781,40 @@ class Database:
             )
             return int(cur.fetchone()[0])
 
-    def save_username(self, user_id: int, username: str) -> bool:
-        if not self.is_plus(user_id):
-            return False
+    def saved_usernames_count(self, user_id: int) -> int:
         self.get_or_create_user(user_id)
         with self._cursor() as cur:
+            cur.execute(
+                "SELECT COUNT(*) FROM saved_usernames WHERE user_id = ?",
+                (user_id,),
+            )
+            return int(cur.fetchone()[0])
+
+    def save_username(
+        self, user_id: int, username: str
+    ) -> Literal["not_plus", "limit", "duplicate", "saved"]:
+        if not self.is_plus(user_id):
+            return "not_plus"
+        self.get_or_create_user(user_id)
+        u = username.lower()
+        with self._cursor() as cur:
+            cur.execute(
+                "SELECT COUNT(*) FROM saved_usernames WHERE user_id = ?",
+                (user_id,),
+            )
+            if int(cur.fetchone()[0]) >= SAVED_USERNAMES_LIMIT:
+                return "limit"
             try:
                 cur.execute(
                     "INSERT INTO saved_usernames (user_id, username) VALUES (?, ?)",
-                    (user_id, username.lower()),
+                    (user_id, u),
                 )
-                return True
+                return "saved"
             except sqlite3.IntegrityError:
-                return False
+                return "duplicate"
 
-    def list_saved(self, user_id: int, limit: int = 50) -> list[str]:
+    def list_saved(self, user_id: int, limit: int | None = None) -> list[str]:
+        lim = SAVED_USERNAMES_LIMIT if limit is None else limit
         self.get_or_create_user(user_id)
         with self._cursor() as cur:
             cur.execute(
@@ -802,7 +824,7 @@ class Database:
                 ORDER BY id DESC
                 LIMIT ?
                 """,
-                (user_id, limit),
+                (user_id, lim),
             )
             return [r[0] for r in cur.fetchall()]
 

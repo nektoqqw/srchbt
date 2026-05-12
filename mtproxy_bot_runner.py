@@ -25,7 +25,8 @@ from checker import (
     telethon_connection_class,
 )
 from config import Settings
-from db import Database
+from channel_gate import subscription_prompt_html, telethon_user_is_channel_member
+from db import Database, SAVED_USERNAMES_LIMIT
 from fragment_scraper import fetch_fragment_gift_price
 
 import bot_v2 as ui
@@ -85,6 +86,21 @@ def _rarity_rows() -> list[list[Button]]:
 def _save_row(username: str) -> list[list[Button]]:
     uname = username.lower()
     return [[Button.inline(f"Сохранить @{uname}", f"save:{uname}".encode("utf-8"))]]
+
+
+def _saved_delete_rows(names: list[str]) -> list[list[Button]]:
+    return [
+        [Button.inline(f"🗑 @{n}", f"saved_del:{n}".encode("utf-8"))]
+        for n in names
+    ]
+
+
+def _subscribe_rows(channel_username: str) -> list[list[Button]]:
+    ch = channel_username.strip().lstrip("@")
+    return [
+        [Button.url("Подписаться на канал", f"https://t.me/{ch}")],
+        [Button.inline("Я подписался — проверить", b"sub:check")],
+    ]
 
 
 def _cb_data(event: events.CallbackQuery.Event) -> str:
@@ -323,6 +339,26 @@ async def _perform_analysis(
         await event.respond(msg, parse_mode="html", buttons=_main_menu_rows())
 
 
+async def _mtproxy_channel_allowed(
+    client: TelegramClient, settings: Settings, uid: int
+) -> bool:
+    ch = (settings.required_channel_username or "").strip()
+    if not ch or uid in settings.admin_ids:
+        return True
+    return await telethon_user_is_channel_member(client, ch, uid)
+
+
+async def _mtproxy_reply_subscribe_required(
+    event: events.NewMessage.Event, settings: Settings
+) -> None:
+    ch = settings.required_channel_username.strip().lstrip("@")
+    await event.respond(
+        subscription_prompt_html(ch),
+        parse_mode="html",
+        buttons=_subscribe_rows(ch),
+    )
+
+
 def register_handlers(client: TelegramClient, ctx: dict[str, Any]) -> None:
 
     @client.on(events.NewMessage(pattern=r"^/start", incoming=True))
@@ -330,6 +366,9 @@ def register_handlers(client: TelegramClient, ctx: dict[str, Any]) -> None:
         uid = event.sender_id
         db: Database = ctx["db"]
         settings: Settings = ctx["settings"]
+        if not await _mtproxy_channel_allowed(event.client, settings, uid):
+            await _mtproxy_reply_subscribe_required(event, settings)
+            return
         db.get_or_create_user(uid)
         if settings.username_check_mode == "disabled":
             intro = (
@@ -357,6 +396,11 @@ def register_handlers(client: TelegramClient, ctx: dict[str, Any]) -> None:
 
     @client.on(events.NewMessage(pattern=r"^/support", incoming=True))
     async def cmd_support(event: events.NewMessage.Event) -> None:
+        settings: Settings = ctx["settings"]
+        uid = event.sender_id
+        if not await _mtproxy_channel_allowed(event.client, settings, uid):
+            await _mtproxy_reply_subscribe_required(event, settings)
+            return
         await event.respond(
             "<b>Поддержка</b>\n\n"
             "Если нужен апдейт/расширение — пишите в чат владельцу бота.",
@@ -367,6 +411,10 @@ def register_handlers(client: TelegramClient, ctx: dict[str, Any]) -> None:
     @client.on(events.NewMessage(pattern=r"^/cancel", incoming=True))
     async def cmd_cancel(event: events.NewMessage.Event) -> None:
         uid = event.sender_id
+        settings: Settings = ctx["settings"]
+        if not await _mtproxy_channel_allowed(event.client, settings, uid):
+            await _mtproxy_reply_subscribe_required(event, settings)
+            return
         PENDING_PROMO.pop(uid, None)
         ud = _ud(uid)
         ud["await_username"] = False
@@ -435,6 +483,64 @@ def register_handlers(client: TelegramClient, ctx: dict[str, Any]) -> None:
         settings: Settings = ctx["settings"]
         data = _cb_data(event)
 
+        if data == "sub:check":
+            if not settings.required_channel_username or uid in settings.admin_ids:
+                await event.answer()
+                return
+            ok = await telethon_user_is_channel_member(
+                event.client, settings.required_channel_username, uid
+            )
+            if ok:
+                await event.answer("✅ Подписка подтверждена!")
+                await event.client.send_message(
+                    uid,
+                    "<b>✅ Канал подписан.</b> Дальше — кнопки меню или <code>/start</code>.",
+                    parse_mode="html",
+                    buttons=_main_menu_rows(),
+                )
+            else:
+                await event.answer(
+                    "Сначала вступите в канал, затем нажмите снова.",
+                    alert=True,
+                )
+            return
+
+        if not await _mtproxy_channel_allowed(event.client, settings, uid):
+            await event.answer(
+                "Сначала подпишитесь на канал бота (см. сообщение при /start).",
+                alert=True,
+            )
+            return
+
+        if data.startswith("saved_del:"):
+            await event.answer()
+            if not db.is_plus(uid):
+                return
+            nick = data.removeprefix("saved_del:").strip()
+            uname = normalize_username(nick)
+            if not is_valid_telegram_username(uname):
+                await event.respond("Некорректный ник.")
+                return
+            db.remove_saved(uid, uname)
+            names = db.list_saved(uid)
+            if not names:
+                await event.edit(
+                    f"<b>Сохранённые</b> (0/{SAVED_USERNAMES_LIMIT})\n\nСписок пуст.",
+                    parse_mode="html",
+                )
+            else:
+                lines = ["<b>Сохранённые имена</b>", ""]
+                for n in names:
+                    lines.append(f"• @{n}")
+                await event.edit(
+                    "\n".join(lines)
+                    + f"\n\n<i>Нажмите 🗑. Лимит {SAVED_USERNAMES_LIMIT}.</i>",
+                    buttons=_saved_delete_rows(names),
+                    parse_mode="html",
+                )
+            await event.client.send_message(uid, "🗑 Ник удалён из сохранённых.")
+            return
+
         if data == "cab:saved":
             await event.answer()
             if not db.is_plus(uid):
@@ -442,12 +548,21 @@ def register_handlers(client: TelegramClient, ctx: dict[str, Any]) -> None:
                 return
             names = db.list_saved(uid)
             if not names:
-                await event.edit("Пока пусто. Крутите ролл или проверьте ник и нажмите «Сохранить».")
+                await event.edit(
+                    "Пока пусто. Крутите ролл или проверьте ник и нажмите «Сохранить».\n\n"
+                    f"<i>Можно хранить до {SAVED_USERNAMES_LIMIT} ников.</i>",
+                    parse_mode="html",
+                )
                 return
             lines = ["<b>Сохранённые имена</b>", ""]
             for n in names:
                 lines.append(f"• @{n}")
-            await event.edit("\n".join(lines), parse_mode="html")
+            await event.edit(
+                "\n".join(lines)
+                + f"\n\n<i>Нажмите 🗑. Лимит {SAVED_USERNAMES_LIMIT}.</i>",
+                buttons=_saved_delete_rows(names),
+                parse_mode="html",
+            )
             return
 
         if data == "cab:back":
@@ -468,8 +583,17 @@ def register_handlers(client: TelegramClient, ctx: dict[str, Any]) -> None:
                 await event.answer("Нужен PLUS", alert=True)
                 return
             uname = data.split(":", 1)[1].lower()
-            ok = db.save_username(uid, uname)
-            await event.answer("Сохранено ✅" if ok else "Уже было", alert=True)
+            res = db.save_username(uid, uname)
+            await event.answer()
+            if res == "saved":
+                await event.client.send_message(uid, "✅ Юзернейм сохранён!")
+            elif res == "duplicate":
+                await event.client.send_message(uid, "Этот ник уже в списке.")
+            elif res == "limit":
+                await event.client.send_message(
+                    uid,
+                    f"Лимит {SAVED_USERNAMES_LIMIT} сохранённых. Удалите лишнее в «Сохранённые».",
+                )
             return
 
         if data == "roll:cancel":
@@ -514,6 +638,9 @@ def register_handlers(client: TelegramClient, ctx: dict[str, Any]) -> None:
         db: Database = ctx["db"]
         settings: Settings = ctx["settings"]
         text = (event.raw_text or "").strip()
+        if not await _mtproxy_channel_allowed(event.client, settings, uid):
+            await _mtproxy_reply_subscribe_required(event, settings)
+            return
         ud = _ud(uid)
 
         if ud.get("await_username"):

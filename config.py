@@ -10,6 +10,18 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+REQUIRED_CHANNEL_DEFAULT = "amnyam_search"
+
+
+def parse_required_channel_username(raw: str | None) -> str:
+    """Пустая строка / off / 0 — отключить проверку (для разработки)."""
+    if raw is None:
+        return REQUIRED_CHANNEL_DEFAULT
+    s = raw.strip().lstrip("@")
+    if not s or s.lower() in ("0", "off", "false", "none", "disable", "disabled"):
+        return ""
+    return s
+
 
 def _parse_admin_ids(raw: str | None) -> set[int]:
     if not raw:
@@ -64,6 +76,8 @@ class Settings:
     referral_plus_hours: int = 1
     # без @ — если задан, реф. ссылка строится от него (запас, если Bot API не отдаёт username)
     bot_username_for_links: str = ""
+    # без @; пусто — не требовать канал. Бот должен быть админом канала, иначе getChatMember не сработает.
+    required_channel_username: str = "amnyam_search"
 
 
 def load_settings() -> Settings:
@@ -172,6 +186,10 @@ def load_settings() -> Settings:
 
     bot_username_for_links = (os.environ.get("BOT_USERNAME_FOR_LINKS") or "").strip().lstrip("@")
 
+    required_channel_username = parse_required_channel_username(
+        os.environ.get("REQUIRED_CHANNEL_USERNAME")
+    )
+
     plus_hint_raw = (os.environ.get("PLUS_PAYMENT_HINT") or "").strip()
     if not plus_hint_raw:
         plus_payment_hint = (
@@ -213,4 +231,5 @@ def load_settings() -> Settings:
         luck_promo_max_uses=luck_promo_max_uses,
         referral_plus_hours=referral_plus_hours,
         bot_username_for_links=bot_username_for_links,
+        required_channel_username=required_channel_username,
     )

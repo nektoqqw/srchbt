@@ -42,7 +42,12 @@ from checker import (
     telethon_connection_class,
 )
 from config import Settings, load_settings
-from db import Database
+from channel_gate import (
+    SUB_CHECK_CALLBACK,
+    ptb_user_is_channel_member,
+    ptb_user_may_use_bot,
+)
+from db import Database, SAVED_USERNAMES_LIMIT
 from fragment_scraper import fetch_fragment_gift_price
 log = logging.getLogger(__name__)
 
@@ -141,6 +146,8 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     uid = update.effective_user.id
     db: Database = context.bot_data["db"]
     settings: Settings = context.bot_data["settings"]
+    if not await ptb_user_may_use_bot(update, context):
+        return
     db.get_or_create_user(uid)
     if settings.username_check_mode == "disabled":
         intro = (
@@ -161,6 +168,8 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def cmd_support(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     assert update.message
+    if not await ptb_user_may_use_bot(update, context):
+        return
     await update.message.reply_html(
         "<b>Поддержка</b>\n\n"
         "Если нужен апдейт/расширение — пишите в чат владельцу бота.",
@@ -549,6 +558,8 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     db: Database = context.bot_data["db"]
     settings: Settings = context.bot_data["settings"]
     assert update.message.text
+    if not await ptb_user_may_use_bot(update, context):
+        return
     text = update.message.text.strip()
 
     # Режим ожидания username для анализа
@@ -629,6 +640,15 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     )
 
 
+def _v2_saved_list_kb(names: list[str]) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [InlineKeyboardButton(f"🗑 @{n}", callback_data=f"saved_del:{n}")]
+            for n in names
+        ]
+    )
+
+
 async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     assert update.callback_query and update.effective_user
     q = update.callback_query
@@ -637,7 +657,69 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     settings: Settings = context.bot_data["settings"]
 
     data = q.data or ""
+
+    if data == SUB_CHECK_CALLBACK:
+        if uid in settings.admin_ids or not settings.required_channel_username:
+            await q.answer()
+            return
+        ok = await ptb_user_is_channel_member(
+            context.bot, settings.required_channel_username, uid
+        )
+        if ok:
+            await q.answer("✅ Подписка подтверждена!")
+            await q.message.reply_html(
+                "<b>✅ Канал подписан.</b> Дальше — кнопки меню или <code>/start</code>.",
+                reply_markup=MAIN_MENU_KB,
+            )
+        else:
+            await q.answer(
+                "Сначала вступите в канал, затем нажмите снова.",
+                show_alert=True,
+            )
+        return
+
+    if (
+        settings.required_channel_username
+        and uid not in settings.admin_ids
+        and not await ptb_user_is_channel_member(
+            context.bot, settings.required_channel_username, uid
+        )
+    ):
+        await q.answer(
+            "Сначала подпишитесь на канал бота (см. сообщение при /start).",
+            show_alert=True,
+        )
+        return
+
     await q.answer()
+
+    if data.startswith("saved_del:"):
+        if not db.is_plus(uid):
+            return
+        nick = data.removeprefix("saved_del:").strip()
+        uname = normalize_username(nick)
+        if not is_valid_telegram_username(uname):
+            await q.message.reply_html("<b>Некорректный ник.</b>")
+            return
+        db.remove_saved(uid, uname)
+        names = db.list_saved(uid)
+        if not names:
+            await q.edit_message_text(
+                f"<b>Сохранённые</b> (0/{SAVED_USERNAMES_LIMIT})\n\nСписок пуст.",
+                parse_mode="HTML",
+            )
+        else:
+            lines = ["<b>Сохранённые имена</b>", ""]
+            for n in names:
+                lines.append(f"• @{n}")
+            await q.edit_message_text(
+                "\n".join(lines)
+                + f"\n\n<i>Нажмите 🗑 для удаления. Лимит {SAVED_USERNAMES_LIMIT}.</i>",
+                parse_mode="HTML",
+                reply_markup=_v2_saved_list_kb(names),
+            )
+        await q.message.reply_html("🗑 Ник удалён из сохранённых.")
+        return
 
     if data == "cab:saved":
         if not db.is_plus(uid):
@@ -645,12 +727,21 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             return
         names = db.list_saved(uid)
         if not names:
-            await q.edit_message_text("Пока пусто. Крутите ролл или проверьте ник и нажмите «Сохранить».")
+            await q.edit_message_text(
+                "Пока пусто. Крутите ролл или проверьте ник и нажмите «Сохранить».\n\n"
+                f"<i>Можно хранить до {SAVED_USERNAMES_LIMIT} ников.</i>",
+                parse_mode="HTML",
+            )
             return
         lines = ["<b>Сохранённые имена</b>", ""]
         for n in names:
             lines.append(f"• @{n}")
-        await q.edit_message_text("\n".join(lines), parse_mode="HTML")
+        await q.edit_message_text(
+            "\n".join(lines)
+            + f"\n\n<i>Нажмите 🗑 для удаления. Лимит {SAVED_USERNAMES_LIMIT}.</i>",
+            parse_mode="HTML",
+            reply_markup=_v2_saved_list_kb(names),
+        )
         return
 
     if data == "cab:back":
@@ -664,11 +755,18 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     if data.startswith("save:"):
         if not db.is_plus(uid):
-            await q.answer("Нужен PLUS", show_alert=True)
+            await q.message.reply_html("Нужен PLUS")
             return
         uname = data.split(":", 1)[1].lower()
-        ok = db.save_username(uid, uname)
-        await q.answer("Сохранено ✅" if ok else "Уже было", show_alert=True)
+        res = db.save_username(uid, uname)
+        if res == "saved":
+            await q.message.reply_html("✅ Юзернейм сохранён!")
+        elif res == "duplicate":
+            await q.message.reply_html("Этот ник уже в списке.")
+        elif res == "limit":
+            await q.message.reply_html(
+                f"Лимит <b>{SAVED_USERNAMES_LIMIT}</b> сохранённых. Удалите лишнее в «Сохранённые»."
+            )
         return
 
     if data == "roll:cancel":
@@ -704,6 +802,8 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
 async def cmd_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     assert update.effective_user and update.message
+    if not await ptb_user_may_use_bot(update, context):
+        return
     PENDING_PROMO.pop(update.effective_user.id, None)
     context.user_data["await_username"] = False
     context.user_data.pop("roll_len", None)

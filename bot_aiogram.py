@@ -47,8 +47,9 @@ from checker import (
     random_letters_username,
     telethon_connection_class,
 )
+from channel_gate_aiogram import AiogramChannelGateMiddleware
 from config import Settings, load_settings
-from db import Database
+from db import Database, SAVED_USERNAMES_LIMIT
 from admin_panel import (
     admin_clear_session,
     admin_handle_callback,
@@ -835,6 +836,30 @@ def kb_appraisal_saves_many(usernames: list[str]) -> InlineKeyboardMarkup | None
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+def html_saved_usernames_panel(names: list[str]) -> str:
+    n = len(names)
+    head = f"<b>Сохранённые @ники</b> <code>({n}/{SAVED_USERNAMES_LIMIT})</code>"
+    body = "\n".join(f"• <code>@{html.escape(x)}</code>" for x in names)
+    tail = "\n\n<i>Нажмите 🗑 рядом с ником, чтобы удалить из списка.</i>"
+    return f"{head}\n\n{body}{tail}"
+
+
+def kb_saved_list_manage(names: list[str]) -> InlineKeyboardMarkup | None:
+    if not names:
+        return None
+    rows: list[list[InlineKeyboardButton]] = []
+    for x in names:
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text=f"🗑 @{x}",
+                    callback_data=f"saved_del:{x}",
+                )
+            ]
+        )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 def parse_usernames_from_user_input(text: str) -> list[str]:
     """Делит ввод вида «crypto, @wolf; ninja» на отдельные @ники."""
     raw = text.strip()
@@ -1527,6 +1552,33 @@ async def on_callback_frag(
 
     await cb.answer()
 
+    if data.startswith("saved_del:"):
+        if not db.is_plus(uid):
+            return
+        nick = data.removeprefix("saved_del:").strip()
+        uname = normalize_username(nick)
+        if not is_valid_telegram_username(uname):
+            await cb.message.answer("<b>Некорректный ник.</b>", parse_mode="HTML")
+            return
+        db.remove_saved(uid, uname)
+        names = db.list_saved(uid)
+        if not names:
+            await cb.message.edit_text(
+                "<b>Сохранённые @ники</b>\n\n"
+                "<i>Список пуст. Можно сохранить новые из крутки или оценки "
+                f"(до <b>{SAVED_USERNAMES_LIMIT}</b> шт.).</i>",
+                parse_mode="HTML",
+                reply_markup=None,
+            )
+        else:
+            await cb.message.edit_text(
+                html_saved_usernames_panel(names),
+                parse_mode="HTML",
+                reply_markup=kb_saved_list_manage(names),
+            )
+        await cb.message.answer("🗑 Ник удалён из сохранённых.", parse_mode="HTML")
+        return
+
     if data.startswith("plus:tariff:"):
         key = data.split(":", 2)[2]
         t = plus_tariff_by_key(key)
@@ -1637,31 +1689,38 @@ async def on_callback_frag(
         if not names:
             await cb.message.edit_text(
                 f"<b>Пока пусто.</b> Сохраняйте @ники кнопкой <b>«Сохранить»</b> после "
-                f"«{html.escape(BTN_SEARCH_F)}» или после <b>оценки</b> в «{html.escape(BTN_VALUATE_F)}».",
+                f"«{html.escape(BTN_SEARCH_F)}» или после <b>оценки</b> в «{html.escape(BTN_VALUATE_F)}».\n\n"
+                f"<i>Можно хранить до <b>{SAVED_USERNAMES_LIMIT}</b> ников.</i>",
                 parse_mode="HTML",
+                reply_markup=None,
             )
             return
-        body = "\n".join(f"• <code>@{html.escape(n)}</code>" for n in names)
         await cb.message.edit_text(
-            "<b>Сохранённые @ники</b>\n\n"
-            f"{body}",
+            html_saved_usernames_panel(names),
             parse_mode="HTML",
+            reply_markup=kb_saved_list_manage(names),
         )
         return
 
     if data.startswith("save:"):
         if not db.is_plus(uid):
-            await cb.answer(
+            await cb.message.answer(
                 "Сохранение никнеймов — только с подпиской PLUS",
-                show_alert=True,
+                parse_mode="HTML",
             )
             return
         name = data.split(":", 1)[1].lower()
-        ok = db.save_username(uid, name)
-        await cb.answer(
-            "Никнейм сохранён" if ok else "Такой ник уже в списке",
-            show_alert=True,
-        )
+        res = db.save_username(uid, name)
+        if res == "saved":
+            await cb.message.answer("✅ Юзернейм сохранён!", parse_mode="HTML")
+        elif res == "duplicate":
+            await cb.message.answer("Этот ник уже в сохранённых.", parse_mode="HTML")
+        elif res == "limit":
+            await cb.message.answer(
+                f"Достигнут лимит <b>{SAVED_USERNAMES_LIMIT}</b> сохранённых ников. "
+                "Удалите лишние в «Сохранённые ники».",
+                parse_mode="HTML",
+            )
         return
 
     if data == "frag:filters" or data.startswith("frag:f:"):
@@ -2674,6 +2733,33 @@ async def on_callback_v2(cb: CallbackQuery, db: Database, settings: Settings, ch
 
     await cb.answer()
 
+    if data.startswith("saved_del:"):
+        if not db.is_plus(uid):
+            return
+        nick = data.removeprefix("saved_del:").strip()
+        uname = normalize_username(nick)
+        if not is_valid_telegram_username(uname):
+            await cb.message.answer("<b>Некорректный ник.</b>", parse_mode="HTML")
+            return
+        db.remove_saved(uid, uname)
+        names = db.list_saved(uid)
+        if not names:
+            await cb.message.edit_text(
+                "<b>Сохранённые @ники</b>\n\n"
+                "<i>Список пуст. Можно сохранить новые из крутки или оценки "
+                f"(до <b>{SAVED_USERNAMES_LIMIT}</b> шт.).</i>",
+                parse_mode="HTML",
+                reply_markup=None,
+            )
+        else:
+            await cb.message.edit_text(
+                html_saved_usernames_panel(names),
+                parse_mode="HTML",
+                reply_markup=kb_saved_list_manage(names),
+            )
+        await cb.message.answer("🗑 Ник удалён из сохранённых.", parse_mode="HTML")
+        return
+
     if data == "cab:saved":
         if not db.is_plus(uid):
             await cb.message.edit_text(
@@ -2685,14 +2771,17 @@ async def on_callback_v2(cb: CallbackQuery, db: Database, settings: Settings, ch
         if not names:
             await cb.message.edit_text(
                 "<b>Пока пусто.</b> Сохраняйте @ники кнопкой <b>«Сохранить»</b> после крутки "
-                f"или после <b>оценки</b> («{html.escape(BTN_VALUATE)}»).",
+                f"или после <b>оценки</b> («{html.escape(BTN_VALUATE)}»).\n\n"
+                f"<i>Можно хранить до <b>{SAVED_USERNAMES_LIMIT}</b> ников.</i>",
                 parse_mode="HTML",
+                reply_markup=None,
             )
             return
-        lines = ["<b>Сохранённые @ники</b>", ""]
-        for n in names:
-            lines.append(f"• <code>@{html.escape(n)}</code>")
-        await cb.message.edit_text("\n".join(lines), parse_mode="HTML")
+        await cb.message.edit_text(
+            html_saved_usernames_panel(names),
+            parse_mode="HTML",
+            reply_markup=kb_saved_list_manage(names),
+        )
         return
 
     if data == "cab:back":
@@ -2895,17 +2984,23 @@ async def on_callback_v2(cb: CallbackQuery, db: Database, settings: Settings, ch
 
     if data.startswith("save:"):
         if not db.is_plus(uid):
-            await cb.answer(
+            await cb.message.answer(
                 "Сохранение никнеймов — только с подпиской PLUS",
-                show_alert=True,
+                parse_mode="HTML",
             )
             return
         uname = data.split(":", 1)[1].lower()
-        ok = db.save_username(uid, uname)
-        await cb.answer(
-            "Никнейм сохранён" if ok else "Такой ник уже в списке",
-            show_alert=True,
-        )
+        res = db.save_username(uid, uname)
+        if res == "saved":
+            await cb.message.answer("✅ Юзернейм сохранён!", parse_mode="HTML")
+        elif res == "duplicate":
+            await cb.message.answer("Этот ник уже в сохранённых.", parse_mode="HTML")
+        elif res == "limit":
+            await cb.message.answer(
+                f"Достигнут лимит <b>{SAVED_USERNAMES_LIMIT}</b> сохранённых ников. "
+                "Удалите лишние в «Сохранённые ники».",
+                parse_mode="HTML",
+            )
         return
 
     if data == "roll:cancel":
@@ -3103,6 +3198,8 @@ async def aiogram_main() -> None:
     dp.update.middleware(
         DependenciesMiddleware(db=db, settings=settings, checker=checker)
     )
+    dp.message.middleware(AiogramChannelGateMiddleware())
+    dp.callback_query.middleware(AiogramChannelGateMiddleware())
 
     @dp.message(CommandStart())
     async def _start(

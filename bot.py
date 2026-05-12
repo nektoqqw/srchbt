@@ -33,10 +33,17 @@ from checker import (
     DisabledUsernameChecker,
     UsernameChecker,
     find_available_batch,
+    is_valid_telegram_username,
+    normalize_username,
     telethon_connection_class,
 )
 from config import Settings, load_settings
-from db import Database
+from channel_gate import (
+    SUB_CHECK_CALLBACK,
+    ptb_user_is_channel_member,
+    ptb_user_may_use_bot,
+)
+from db import Database, SAVED_USERNAMES_LIMIT
 from fragment_scraper import collect_usernames_not_on_fragment
 
 # --- Константы UI ---
@@ -105,6 +112,8 @@ def format_cabinet_text(db: Database, user_id: int, settings: Settings) -> str:
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     assert update.effective_user and update.message
+    if not await ptb_user_may_use_bot(update, context):
+        return
     db: Database = context.bot_data["db"]
     settings: Settings = context.bot_data["settings"]
     db.get_or_create_user(update.effective_user.id)
@@ -130,6 +139,8 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     assert update.effective_user and update.message and update.message.text
+    if not await ptb_user_may_use_bot(update, context):
+        return
     uid = update.effective_user.id
     text = (update.message.text or "").strip()
     db: Database = context.bot_data["db"]
@@ -225,15 +236,81 @@ async def handle_search_button(update: Update, context: ContextTypes.DEFAULT_TYP
     )
 
 
+def _ptb_saved_list_kb(names: list[str]) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [InlineKeyboardButton(f"🗑 @{n}", callback_data=f"saved_del:{n}")]
+            for n in names
+        ]
+    )
+
+
 async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     assert update.callback_query and update.effective_user
     q = update.callback_query
-    await q.answer()
     data = q.data or ""
     uid = update.effective_user.id
     db: Database = context.bot_data["db"]
     settings: Settings = context.bot_data["settings"]
     checker = context.bot_data["checker"]
+
+    if data == SUB_CHECK_CALLBACK:
+        if uid in settings.admin_ids or not settings.required_channel_username:
+            await q.answer()
+            return
+        ok = await ptb_user_is_channel_member(
+            context.bot, settings.required_channel_username, uid
+        )
+        if ok:
+            await q.answer("✅ Подписка подтверждена!")
+            await q.message.reply_html(
+                "<b>✅ Канал подписан.</b> Дальше — кнопки меню или <code>/start</code>.",
+                reply_markup=main_menu_keyboard(),
+            )
+        else:
+            await q.answer(
+                "Сначала вступите в канал, затем нажмите снова.",
+                show_alert=True,
+            )
+        return
+
+    if (
+        settings.required_channel_username
+        and uid not in settings.admin_ids
+        and not await ptb_user_is_channel_member(
+            context.bot, settings.required_channel_username, uid
+        )
+    ):
+        await q.answer(
+            "Сначала подпишитесь на канал бота (см. сообщение при /start).",
+            show_alert=True,
+        )
+        return
+
+    await q.answer()
+
+    if data.startswith("saved_del:"):
+        if not db.is_plus(uid):
+            return
+        nick = data.removeprefix("saved_del:").strip()
+        uname = normalize_username(nick)
+        if not is_valid_telegram_username(uname):
+            await q.message.reply_text("Некорректный ник.")
+            return
+        db.remove_saved(uid, uname)
+        names = db.list_saved(uid)
+        if not names:
+            await q.edit_message_text(
+                f"Сохранённые @ники (0/{SAVED_USERNAMES_LIMIT})\n\nСписок пуст.",
+            )
+        else:
+            body = "\n".join(f"@{n}" for n in names)
+            await q.edit_message_text(
+                f"Сохранённые ({len(names)}/{SAVED_USERNAMES_LIMIT}):\n\n{body}\n\nНажмите 🗑 для удаления.",
+                reply_markup=_ptb_saved_list_kb(names),
+            )
+        await q.message.reply_text("🗑 Ник удалён из сохранённых.")
+        return
 
     if data == "plus:enter":
         PENDING_PROMO[uid] = True
@@ -259,19 +336,33 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             return
         names = db.list_saved(uid)
         if not names:
-            body = "Пока пусто. Найдите ник и нажмите «Сохранить» под результатом."
-        else:
-            body = "\n".join(f"@{n}" for n in names)
-        await q.edit_message_text(f"Сохраненные ({len(names)}):\n\n{body}")
+            body = (
+                f"Пока пусто. Найдите ник и нажмите «Сохранить» под результатом.\n\n"
+                f"Можно хранить до {SAVED_USERNAMES_LIMIT} ников."
+            )
+            await q.edit_message_text(body)
+            return
+        body = "\n".join(f"@{n}" for n in names)
+        await q.edit_message_text(
+            f"Сохранённые ({len(names)}/{SAVED_USERNAMES_LIMIT}):\n\n{body}\n\nНажмите 🗑 для удаления.",
+            reply_markup=_ptb_saved_list_kb(names),
+        )
         return
 
     if data.startswith("save:"):
         name = data.split(":", 1)[1].lower()
         if not db.is_plus(uid):
-            await q.answer("Нужна подписка PLUS", show_alert=True)
+            await q.message.reply_text("Нужна подписка PLUS")
             return
-        ok = db.save_username(uid, name)
-        await q.answer("Сохранено ✅" if ok else "Уже было в списке", show_alert=True)
+        res = db.save_username(uid, name)
+        if res == "saved":
+            await q.message.reply_text("✅ Юзернейм сохранён!")
+        elif res == "duplicate":
+            await q.message.reply_text("Этот ник уже в списке.")
+        elif res == "limit":
+            await q.message.reply_text(
+                f"Лимит {SAVED_USERNAMES_LIMIT} сохранённых. Удалите лишнее в «Сохранённые»."
+            )
         return
 
     if data.startswith("search:"):
@@ -380,6 +471,8 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
 async def cmd_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     assert update.effective_user and update.message
+    if not await ptb_user_may_use_bot(update, context):
+        return
     PENDING_PROMO.pop(update.effective_user.id, None)
     await update.message.reply_text("Ок.", reply_markup=main_menu_keyboard())
 
