@@ -302,9 +302,9 @@ TIER_MIN_USD: Final[dict[str, float]] = {
     "super": 1000.0,
 }
 
-# КД только для кнопки «Крутить повторно» (сек.)
-ROLL_REPEAT_COOLDOWN_S: Final[float] = 5.0
-_roll_repeat_cd_until: dict[int, float] = {}
+# Пауза перед повторной круткой по кнопке (секунды + обратный отсчёт в UI)
+ROLL_REPEAT_COOLDOWN_S: Final[int] = 5
+ROLL_REPEAT_STAR_FRAMES: Final[tuple[str, ...]] = ("✨", "⭐", "🌟", "💫")
 
 
 def _frag_roll_state(uid: int) -> dict:
@@ -601,9 +601,10 @@ def _rarity_glyph(name: str) -> str:
 
 
 def kb_roll_post_result(username: str, *, is_plus: bool) -> InlineKeyboardMarkup:
+    """После крутки (режим telethon): сначала пауза 5→1, затем кнопка «ещё раз»."""
     ul = username.lower()
     rows: list[list[InlineKeyboardButton]] = [
-        [InlineKeyboardButton(text="🔁 Крутить повторно", callback_data="roll:repeat")],
+        [InlineKeyboardButton(text="🔁 Крутить ещё раз", callback_data="roll:repeat:start")],
         [
             InlineKeyboardButton(
                 text="📊 Оценить этот ник",
@@ -621,6 +622,333 @@ def kb_roll_post_result(username: str, *, is_plus: bool) -> InlineKeyboardMarkup
             ]
         )
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def kb_frag_roll_post_result(username: str, *, is_plus: bool) -> InlineKeyboardMarkup:
+    """После крутки (fragment): без «Оценить» — этот callback живёт только в v2-роутере."""
+    ul = username.lower()
+    rows: list[list[InlineKeyboardButton]] = [
+        [InlineKeyboardButton(text="🔁 Крутить ещё раз", callback_data="roll:repeat:start")],
+    ]
+    if is_plus:
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text=f"💾 Сохранить @{ul}",
+                    callback_data=f"save:{ul}",
+                )
+            ]
+        )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def kb_roll_repeat_ready(username: str, *, is_plus: bool) -> InlineKeyboardMarkup:
+    """После отсчёта: реальный запуск крутки."""
+    ul = username.lower()
+    rows: list[list[InlineKeyboardButton]] = [
+        [InlineKeyboardButton(text="🔁 Крутить ещё раз", callback_data="roll:repeat:go")],
+        [
+            InlineKeyboardButton(
+                text="📊 Оценить этот ник",
+                callback_data=f"val:go:{ul}",
+            )
+        ],
+    ]
+    if is_plus:
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text=f"💾 Сохранить @{ul}",
+                    callback_data=f"save:{ul}",
+                )
+            ]
+        )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def kb_frag_roll_repeat_ready(username: str, *, is_plus: bool) -> InlineKeyboardMarkup:
+    ul = username.lower()
+    rows: list[list[InlineKeyboardButton]] = [
+        [InlineKeyboardButton(text="🔁 Крутить ещё раз", callback_data="roll:repeat:go")],
+    ]
+    if is_plus:
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text=f"💾 Сохранить @{ul}",
+                    callback_data=f"save:{ul}",
+                )
+            ]
+        )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def _repeat_snapshot_html(cb: CallbackQuery) -> str:
+    m = cb.message
+    raw = getattr(m, "html_text", None) or m.text or ""
+    raw = (raw or "").strip()
+    if not raw:
+        return f"✨ <b>{html.escape(AMNYAM)}</b>\n<i>Предыдущий результат крутки.</i>"
+    if len(raw) > 3500:
+        return raw[:3500] + "\n\n<i>…</i>"
+    return raw
+
+
+async def _repeat_countdown_edits(cb: CallbackQuery, *, snapshot_html: str) -> None:
+    bot = cb.bot
+    chat_id = cb.message.chat.id
+    msg_id = cb.message.message_id
+    for i, sec in enumerate(range(ROLL_REPEAT_COOLDOWN_S, 0, -1)):
+        star = ROLL_REPEAT_STAR_FRAMES[i % len(ROLL_REPEAT_STAR_FRAMES)]
+        body = (
+            f"{snapshot_html}\n\n"
+            f"{ROLL_RULE_LINE_HTML}\n\n"
+            f"{star} <b>Подождите {sec}</b>"
+        )
+        try:
+            await bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=msg_id,
+                text=body,
+                parse_mode="HTML",
+                reply_markup=None,
+            )
+        except Exception:
+            pass
+        await asyncio.sleep(1.0)
+
+
+async def _handle_roll_repeat_start(
+    cb: CallbackQuery,
+    db: Database,
+    settings: Settings,
+    checker: Any,
+    *,
+    mode: str,
+) -> None:
+    assert cb.from_user and cb.message
+    uid = cb.from_user.id
+    ud = _sess[uid]
+    if ud.get("roll_repeat_busy"):
+        await cb.answer("Подождите, идёт отсчёт…", show_alert=True)
+        return
+    if mode == "fragment":
+        if ud.get("frag_roll_last_len") is None:
+            await cb.answer("Сначала сделайте подбор через «Крутить».", show_alert=True)
+            return
+        uname = str(ud.get("frag_roll_last_username") or "").strip().lower()
+    else:
+        if ud.get("roll_last_len") is None or ud.get("roll_last_tier") is None:
+            await cb.answer("Сначала сделайте подбор через «Крутить».", show_alert=True)
+            return
+        uname = str(ud.get("roll_last_username") or "").strip().lower()
+    if not uname:
+        await cb.answer("Сначала сделайте подбор заново.", show_alert=True)
+        return
+    await cb.answer()
+    ud["roll_repeat_busy"] = True
+    try:
+        snap = _repeat_snapshot_html(cb)
+        await _repeat_countdown_edits(cb, snapshot_html=snap)
+        is_plus = db.is_plus(uid)
+        kb = (
+            kb_frag_roll_repeat_ready(uname, is_plus=is_plus)
+            if mode == "fragment"
+            else kb_roll_repeat_ready(uname, is_plus=is_plus)
+        )
+        await cb.message.edit_text(
+            "✨ <b>Можно крутить снова!</b>\n\n<i>Нажмите кнопку ниже.</i>",
+            parse_mode="HTML",
+            reply_markup=kb,
+        )
+    except Exception:
+        log.exception("roll repeat countdown")
+    finally:
+        ud.pop("roll_repeat_busy", None)
+
+
+async def _handle_roll_repeat_go_v2(
+    cb: CallbackQuery, db: Database, settings: Settings, checker: Any
+) -> None:
+    assert cb.from_user
+    uid = cb.from_user.id
+    ud = _sess[uid]
+    ln, tk = ud.get("roll_last_len"), ud.get("roll_last_tier")
+    if ln is None or tk is None:
+        await cb.answer("Сначала сделайте подбор через «Крутить».", show_alert=True)
+        return
+    await cb.answer()
+    await perform_roll_v2(
+        cb,
+        uid=uid,
+        length=int(ln),
+        tier_key=str(tk),
+        db=db,
+        settings=settings,
+        checker=checker,
+    )
+
+
+async def _handle_roll_repeat_go_fragment(
+    cb: CallbackQuery, db: Database, settings: Settings, checker: Any
+) -> None:
+    assert cb.from_user
+    uid = cb.from_user.id
+    ud = _sess[uid]
+    ln = ud.get("frag_roll_last_len")
+    if ln is None:
+        await cb.answer("Сначала сделайте подбор через «Крутить».", show_alert=True)
+        return
+    await cb.answer()
+    await _frag_run_roll_at_length(cb, uid, int(ln), db, settings, checker)
+
+
+async def _frag_run_roll_at_length(
+    cb: CallbackQuery,
+    uid: int,
+    length: int,
+    db: Database,
+    settings: Settings,
+    checker: Any,
+) -> None:
+    """Один цикл fragment-подбора по выбранной длине (из frag:len или roll:repeat:go)."""
+    if db.is_search_globally_blocked() and uid not in settings.admin_ids:
+        await cb.message.edit_text(
+            "<b>Подбор на паузе</b>\n\n"
+            "Поиск имён временно отключён администратором.",
+            parse_mode="HTML",
+        )
+        return
+    if not db.can_search(uid, settings.free_search_limit):
+        await cb.message.edit_text(
+            "<b>Лимит исчерпан</b>\n\n"
+            "Бесплатные попытки закончились. Оформите <b>Подписка PLUS</b> для безлимита.",
+            parse_mode="HTML",
+        )
+        return
+
+    is_plus = db.is_plus(uid)
+    max_attempts = 420 if is_plus else 140
+    if getattr(checker, "uses_telethon", False):
+        max_attempts = 900 if is_plus else 320
+    lucky_spin = db.is_luck_roll_active(uid)
+    flt = _roll_filters_obj(uid)
+    if is_plus and flt.active():
+        max_attempts = min(1400, int(max_attempts * 1.45))
+
+    await cb.message.edit_text(
+        _ui_frag_search_frame(0),
+        parse_mode="HTML",
+    )
+
+    chat_id = cb.message.chat.id
+    msg_id = cb.message.message_id
+    bot = cb.bot
+
+    try:
+        found_name, attempts, timed_out = await _find_one_username_fragment(
+            bot=bot,
+            chat_id=chat_id,
+            message_id=msg_id,
+            length=length,
+            max_attempts=max_attempts,
+            delay_s=settings.fragment_request_delay_s,
+            lucky=lucky_spin,
+            checker=checker,
+            filters=flt,
+            fragment_timeout_s=settings.fragment_roll_timeout_s,
+            is_plus=is_plus,
+        )
+    except Exception:
+        log.exception("поиск ника fragment-режим")
+        await bot.edit_message_text(
+            chat_id=chat_id,
+            message_id=msg_id,
+            text=_ui_plain_error(),
+            parse_mode="HTML",
+        )
+        await bot.send_message(
+            uid,
+            "<b>Ошибка сервиса.</b> Нажмите <code>/start</code> или выберите действие внизу.",
+            reply_markup=kb_fragment_main(uid=uid, settings=settings),
+            parse_mode="HTML",
+        )
+        return
+
+    if not timed_out:
+        db.increment_search(uid)
+
+    if not found_name:
+        fail_text = _ui_frag_timeout_fail() if timed_out else _ui_frag_fail()
+        await bot.edit_message_text(
+            chat_id=chat_id,
+            message_id=msg_id,
+            text=fail_text,
+            parse_mode="HTML",
+        )
+        tail_hint = (
+            "<b>Совет:</b> измените длину или фильтры (PLUS) и попробуйте снова."
+            if timed_out
+            else "<b>Можно повторить</b> — кнопки внизу экрана."
+        )
+        await bot.send_message(
+            uid,
+            tail_hint,
+            reply_markup=kb_fragment_main(uid=uid, settings=settings),
+            parse_mode="HTML",
+        )
+        return
+
+    log.debug("fragment pick найден за %s шагов", attempts)
+    rarity_name: str | None = None
+    predicted_price: float | None = None
+    why_r: str | None = None
+    try:
+        ri, predicted_price, why_r = _rarity_for_display(
+            found_name, db, settings.ton_to_usd
+        )
+        rarity_name = ri.name
+        db.add_roll_event(
+            user_id=uid,
+            username=found_name.lower(),
+            rarity=rarity_name,
+            predicted_price_usd=predicted_price,
+        )
+    except Exception:
+        log.exception("rarity/roll_event for fragment pick")
+
+    ud = _sess[uid]
+    ud["frag_roll_last_len"] = length
+    ud["frag_roll_last_username"] = found_name.lower()
+
+    tail = (
+        ""
+        if is_plus
+        else "\n\n<i><b>Подписка PLUS</b> — сохранить никнейм одной кнопкой.</i>"
+    )
+    if lucky_spin and not flt.active():
+        tail += (
+            "\n\n<i>🍀 Учтён режим <b>«Удача»</b>: приоритет симметричных и удачных комбинаций.</i>"
+        )
+    elif flt.active():
+        tail += (
+            "\n\n<i>🎛 Применены <b>фильтры PLUS</b>: "
+            f"{html.escape(filters_summary_ru(flt))}.</i>"
+        )
+
+    await bot.edit_message_text(
+        chat_id=chat_id,
+        message_id=msg_id,
+        text=_ui_frag_found(
+            found_name,
+            rarity_name=rarity_name,
+            predicted_price=predicted_price,
+            why=why_r,
+        )
+        + tail,
+        parse_mode="HTML",
+        reply_markup=kb_frag_roll_post_result(found_name, is_plus=is_plus),
+    )
 
 
 def kb_valuation_post_single(username: str, *, is_plus: bool) -> InlineKeyboardMarkup:
@@ -1550,6 +1878,13 @@ async def on_callback_frag(
         )
         return
 
+    if data in ("roll:repeat:start", "roll:repeat"):
+        await _handle_roll_repeat_start(cb, db, settings, checker, mode="fragment")
+        return
+    if data == "roll:repeat:go":
+        await _handle_roll_repeat_go_fragment(cb, db, settings, checker)
+        return
+
     await cb.answer()
 
     if data.startswith("saved_del:"):
@@ -1843,152 +2178,7 @@ async def on_callback_frag(
 
     if data.startswith("frag:len:"):
         length = int(data.split(":")[2])
-        if db.is_search_globally_blocked() and uid not in settings.admin_ids:
-            await cb.message.edit_text(
-                "<b>Подбор на паузе</b>\n\n"
-                "Поиск имён временно отключён администратором.",
-                parse_mode="HTML",
-            )
-            return
-        if not db.can_search(uid, settings.free_search_limit):
-            await cb.message.edit_text(
-                "<b>Лимит исчерпан</b>\n\n"
-                "Бесплатные попытки закончились. Оформите <b>Подписка PLUS</b> для безлимита.",
-                parse_mode="HTML",
-            )
-            return
-
-        is_plus = db.is_plus(uid)
-        max_attempts = 420 if is_plus else 140
-        if getattr(checker, "uses_telethon", False):
-            max_attempts = 900 if is_plus else 320
-        lucky_spin = db.is_luck_roll_active(uid)
-        flt = _roll_filters_obj(uid)
-        if is_plus and flt.active():
-            max_attempts = min(1400, int(max_attempts * 1.45))
-
-        await cb.message.edit_text(
-            _ui_frag_search_frame(0),
-            parse_mode="HTML",
-        )
-
-        chat_id = cb.message.chat.id
-        msg_id = cb.message.message_id
-        bot = cb.bot
-
-        try:
-            found_name, attempts, timed_out = await _find_one_username_fragment(
-                bot=bot,
-                chat_id=chat_id,
-                message_id=msg_id,
-                length=length,
-                max_attempts=max_attempts,
-                delay_s=settings.fragment_request_delay_s,
-                lucky=lucky_spin,
-                checker=checker,
-                filters=flt,
-                fragment_timeout_s=settings.fragment_roll_timeout_s,
-                is_plus=is_plus,
-            )
-        except Exception:
-            log.exception("поиск ника fragment-режим")
-            await bot.edit_message_text(
-                chat_id=chat_id,
-                message_id=msg_id,
-                text=_ui_plain_error(),
-                parse_mode="HTML",
-            )
-            await bot.send_message(
-                uid,
-                "<b>Ошибка сервиса.</b> Нажмите <code>/start</code> или выберите действие внизу.",
-                reply_markup=kb_fragment_main(uid=uid, settings=settings),
-                parse_mode="HTML",
-            )
-            return
-
-        # Таймаут: попытку не списываем; обычный неуспех — списываем.
-        if not timed_out:
-            db.increment_search(uid)
-
-        if not found_name:
-            fail_text = _ui_frag_timeout_fail() if timed_out else _ui_frag_fail()
-            await bot.edit_message_text(
-                chat_id=chat_id,
-                message_id=msg_id,
-                text=fail_text,
-                parse_mode="HTML",
-            )
-            tail_hint = (
-                "<b>Совет:</b> измените длину или фильтры (PLUS) и попробуйте снова."
-                if timed_out
-                else "<b>Можно повторить</b> — кнопки внизу экрана."
-            )
-            await bot.send_message(
-                uid,
-                tail_hint,
-                reply_markup=kb_fragment_main(uid=uid, settings=settings),
-                parse_mode="HTML",
-            )
-            return
-
-        log.debug(" найден за %s шагов", attempts)
-        rarity_name: str | None = None
-        predicted_price: float | None = None
-        why_r: str | None = None
-        try:
-            ri, predicted_price, why_r = _rarity_for_display(
-                found_name, db, settings.ton_to_usd
-            )
-            rarity_name = ri.name
-            db.add_roll_event(
-                user_id=uid,
-                username=found_name.lower(),
-                rarity=rarity_name,
-                predicted_price_usd=predicted_price,
-            )
-        except Exception:
-            log.exception("rarity/roll_event for fragment pick")
-
-        kb_row = []
-        if db.is_plus(uid):
-            kb_row = [
-                [
-                    InlineKeyboardButton(
-                        text="💾 Сохранить никнейм",
-                        callback_data=f"save:{found_name}",
-                    )
-                ]
-            ]
-
-        kb = InlineKeyboardMarkup(inline_keyboard=kb_row) if kb_row else None
-        tail = (
-            ""
-            if db.is_plus(uid)
-            else "\n\n<i><b>Подписка PLUS</b> — сохранить никнейм одной кнопкой.</i>"
-        )
-        if lucky_spin and not flt.active():
-            tail += (
-                "\n\n<i>🍀 Учтён режим <b>«Удача»</b>: приоритет симметричных и удачных комбинаций.</i>"
-            )
-        elif flt.active():
-            tail += (
-                "\n\n<i>🎛 Применены <b>фильтры PLUS</b>: "
-                f"{html.escape(filters_summary_ru(flt))}.</i>"
-            )
-
-        await bot.edit_message_text(
-            chat_id=chat_id,
-            message_id=msg_id,
-            text=_ui_frag_found(
-                found_name,
-                rarity_name=rarity_name,
-                predicted_price=predicted_price,
-                why=why_r,
-            )
-            + tail,
-            parse_mode="HTML",
-            reply_markup=kb,
-        )
+        await _frag_run_roll_at_length(cb, uid, length, db, settings, checker)
         return
 
     if data == "frag:cancel":
@@ -2682,32 +2872,12 @@ async def on_callback_v2(cb: CallbackQuery, db: Database, settings: Settings, ch
         return
     ud = _sess[uid]
 
-    if data == "roll:repeat":
-        now = time.monotonic()
-        if now < _roll_repeat_cd_until.get(uid, 0):
-            await cb.answer(
-                "Подождите пару секунд между повторными крутками.",
-                show_alert=True,
-            )
-            return
-        ln, tk = ud.get("roll_last_len"), ud.get("roll_last_tier")
-        if ln is None or tk is None:
-            await cb.answer(
-                "Сначала сделайте подбор через «Крутить».",
-                show_alert=True,
-            )
-            return
-        _roll_repeat_cd_until[uid] = now + ROLL_REPEAT_COOLDOWN_S
-        await cb.answer()
-        await perform_roll_v2(
-            cb,
-            uid=uid,
-            length=int(ln),
-            tier_key=str(tk),
-            db=db,
-            settings=settings,
-            checker=checker,
-        )
+    if data in ("roll:repeat:start", "roll:repeat"):
+        await _handle_roll_repeat_start(cb, db, settings, checker, mode="v2")
+        return
+
+    if data == "roll:repeat:go":
+        await _handle_roll_repeat_go_v2(cb, db, settings, checker)
         return
 
     if data == "luck:toggle":
