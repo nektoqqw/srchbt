@@ -1,9 +1,7 @@
 python-telegram-bot[job-queue]==21.7
 aiogram>=3.13,<4
-aiohttp-socks
 telethon==1.36.0
 python-dotenv==1.0.1
 requests
 beautifulsoup4
 lxml
-PySocks

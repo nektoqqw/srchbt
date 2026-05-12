@@ -46,31 +46,7 @@ pip install -r requirements.txt
 - при желании смените `PLUS_PROMO_CODE` и укажите `ADMIN_IDS` (через запятую, ваш числовой `user_id`)
 - `TON_TO_USD` (опционально): курс для конвертации TON в USD, если на Fragment цена распознана только в TON (по умолчанию `2.0`)
 
-**Прокси (опционально):** внешний HTTP/SOCKS (`PROXY`) используется для **Fragment** и, при обычном режиме, для **long polling** Bot API; для **Telethon** (проверка ников) — по флагам ниже. Fragment **всегда** остаётся на HTTP(S), не на MTProto.
-
-**Весь бот к Telegram через MTProto (Telethon), без long polling:** `USE_MTProto_BOT=1` в `.env`. Тогда сообщения и кнопки обрабатывает `mtproxy_bot_runner.py` (тот же функционал, что в `bot_v2.py`). К **Fragment** это не относится — импорт по-прежнему HTTP(S) и может идти через `PROXY`.
-
-- `PROXY=192.168.0.1:1080 myuser:secret` — после `host:port` пробел, затем `логин:пароль`
-- или `PROXY=192.168.0.1:1080 myuser secret` — логин и пароль **через один пробел** (без двоеточия)
-- или `PROXY_URL=http://myuser:secret@192.168.0.1:8080` (также `socks5`, `socks5h`, `https` в URL)
-- `PROXY_TYPE` — для строки `PROXY` без URL: `socks5` (по умолчанию), `socks5h`, `http`, `https`. У провайдерских **«HTTPS-прокси»** обычно нужно `http` или `https` (не `socks5`).
-
-**MTProxy (отдельно от `PROXY`):** **MTProto** — это протокол клиента Telegram; **MTProxy** — отдельный TCP-прокси, который оборачивает MTProto-трафик (его нельзя подставить вместо HTTP/SOCKS для Bot API long polling).
-
-**Два варианта с `MTPROXY`:**
-
-1. **Только Telethon через MTProxy** (обычный бот, long polling): задайте **`MTPROXY`** и **`PROXY`** (или только `MTPROXY`, если Bot API без прокси вас устраивает), **не** включайте **`USE_MTProto_BOT`**. Тогда **проверка @username** (Telethon) идёт через **MTProxy**, а **long polling** и **Fragment** — через **`PROXY`** (HTTP/SOCKS), как у `python-telegram-bot` и `requests`.
-
-2. **Весь бот через Telethon:** **`USE_MTProto_BOT=1`** (и при желании **`MTPROXY`**) — тогда поднимается `mtproxy_bot_runner.py`, без long polling.
-
-- `MTPROXY=host:port секрет_hex` — один пробел между `host:port` и секретом (как в параметрах ссылки `t.me/proxy?...&secret=...`).
-- или `MTPROXY_HOST`, `MTPROXY_PORT`, `MTPROXY_SECRET` (секрет — строка hex, без пробелов).
-
-У Telethon поддержка MTProxy помечена как экспериментальная; если секрет в необычном формате и клиент ругается — обновите Telethon или уточните у провайдера «классический» hex-секрет.
-
-Если при подключении к MTProxy в логах **«Server closed the connection»**, **`IncompleteReadError`** или **`readexactly size can not be less than zero`**: часто несовпадение типа TCP и секрета (ссылки из Telegram рассчитаны на **randomized**). Код **сам** перебирает режимы; **randomized всегда пробуется первым**, затем значение **`MTPROXY_TELETHON_CONNECTION`**, затем остальные. Если всё падает — проверьте `tg://proxy` в приложении и **секрет**. Два TCP (бот + проверка ников) часть прокси не держит. Подбор режима MTProxy делается через **MemorySession**, чтобы не блокировать файл ``.session`` (ошибка ``database is locked``).
-
-Если **`MTPROXY` и `USE_MTProto_BOT` не заданы**, используется **long polling** (`python-telegram-bot`). Если при этом **`telegram.error.TimedOut`** на `get_me` — это HTTP/SOCKS **`PROXY`** до `api.telegram.org`. Оставьте `PROXY` для **Fragment**, а Bot API пусть идёт напрямую: **`BOT_API_USE_PROXY=0`**.
+**Весь бот к Telegram через MTProto (Telethon), без long polling:** `USE_MTProto_BOT=1` в `.env`. Тогда сообщения и кнопки обрабатывает `mtproxy_bot_runner.py` (тот же функционал, что в `bot_v2.py`). Запросы к **Fragment** по-прежнему обычным HTTPS.
 
 ### 3. Первый вход Telethon
 
@@ -91,22 +67,16 @@ python bot_v2.py
 
 ## Ограничения и замечания
 
-### Telethon + прокси: `TimeoutError`
+### Telethon: таймауты
 
-У Telethon по умолчанию короткий таймаут на установку соединения. В `.env` можно поднять:
+В `.env` при необходимости поднимите:
 
 - `TELETHON_TIMEOUT=120`
 - `TELETHON_CONNECTION_RETRIES=10`
 
-Если прокси **HTTP/HTTPS**, часто помогает явно:
-
-- `PROXY_RDNS=false`
-
-Если после этого всё ещё таймаут — прокси может **не пускать** исходящие соединения к дата-центрам Telegram (или неверные логин/порт/тип). Проверьте `PROXY_TYPE=http` для «HTTPS-прокси» у провайдера.
-
 ### Страница my.telegram.org: «Available MTProto servers»
 
-Там указаны **production** IP/порт и публичный ключ — это **та же сеть**, к которой Telethon подключается по умолчанию. Вручную подставлять эти IP **обычно не нужно** и **не лечит** прокси, который режет MTProto.
+Там указаны **production** IP/порт и публичный ключ — это **та же сеть**, к которой Telethon подключается по умолчанию. Вручную подставлять эти IP **обычно не нужно**.
 
 **Test configuration** — отдельная **тестовая** сеть Telegram, для реальных `@username` не подходит.
 
@@ -116,15 +86,13 @@ python bot_v2.py
 
 Допустимые значения: `full`, `obfuscated`, `intermediate`, `abridged`.
 
-### Без Telethon или Telethon без прокси
+### Режимы без полной проверки в Telegram
 
 Официальной замены **MTProto `account.checkUsername`** через **только Bot API** нет: «свободен ли username для установки на аккаунт» без пользовательской сессии Telegram не проверить честно.
 
 Варианты в `.env`:
 
-- **`USE_MTProto_BOT=1`** — весь бот к Telegram через **Telethon (MTProto)**; **Fragment** только по HTTP(S) (`PROXY` при необходимости). Дополнительно можно задать **`MTPROXY`** для туннеля MTProto.
-- **`TELETHON_USE_PROXY=0`** — при **long polling**-режиме Bot API и Fragment идут через `PROXY`, а **Telethon** для проверки ников — напрямую (если прокси режет MTProto).
-- **`BOT_API_USE_PROXY=0`** — только для **long polling**: `getUpdates` без `PROXY`; `PROXY` остаётся для Fragment/`requests`.
+- **`USE_MTProto_BOT=1`** — весь бот к Telegram через **Telethon (MTProto)**; **Fragment** — обычный HTTPS.
 - **`USERNAME_CHECK_MODE=disabled`** — Telethon **не запускается**; бот даёт только **оценку/ролл по данным** с пометкой, что **занятость в Telegram не проверялась**. Финальную проверку нужно делать вручную в приложении Telegram.
 
 - Telegram может ограничивать частоту запросов (**FloodWait**); в коде есть пауза между проверками и одна повторная попытка при FloodWait.
@@ -136,10 +104,9 @@ python bot_v2.py
 | Файл        | Назначение                          |
 |------------|--------------------------------------|
 | `bot_v2.py`| Логика бота (PTB long polling или делегирование в `mtproxy_bot_runner`) |
-| `mtproxy_bot_runner.py` | Telethon (MTProto) для всего трафика бота к Telegram при `MTPROXY` или `USE_MTProto_BOT` |
+| `mtproxy_bot_runner.py` | Telethon (MTProto) для всего трафика бота к Telegram при `USE_MTProto_BOT=1` |
 | `checker.py` | Telethon, проверка username      |
 | `db.py`    | SQLite: лимиты, PLUS, сохранённые имена |
 | `config.py`| Загрузка `.env`                     |
 | `fragment_scraper.py` | Импорт данных Fragment по веб-страницам |
 | `value_model.py` | Прогноз $ и маппинг в редкость |
-| `proxy_config.py` | Парсинг `PROXY` / `PROXY_URL` и `MTPROXY*` для Telethon, requests и Bot API |

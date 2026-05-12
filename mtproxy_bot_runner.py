@@ -1,11 +1,9 @@
 """
 Бот к Telegram через Telethon (MTProto), без long polling Bot API (httpx).
 
-Включается, если задан ``MTPROXY`` или ``USE_MTProto_BOT=1``.
-При ``MTPROXY`` — туннель MTProto через MTProxy; иначе — обычное MTProto-подключение
-(и при необходимости HTTP/SOCKS для Telethon через ``PROXY`` / ``TELETHON_USE_PROXY``).
+Включается при ``USE_MTProto_BOT=1`` (нужен BOT_MODE=telethon и API my.telegram.org).
 
-Запросы к Fragment остаются HTTP(S) в ``fragment_scraper`` (``PROXY`` / напрямую), не через MTProto.
+Запросы к Fragment остаются обычным HTTP(S) в ``fragment_scraper``, не через MTProto.
 """
 
 from __future__ import annotations
@@ -13,22 +11,18 @@ from __future__ import annotations
 import asyncio
 import html
 import logging
-from asyncio import IncompleteReadError
 from functools import partial
 from typing import Any
 
 from telethon import Button, TelegramClient, events
-from telethon.sessions import MemorySession
 from checker import (
     DisabledUsernameChecker,
     UsernameChecker,
     is_valid_telegram_username,
     is_valid_telegram_username_for_roll,
-    iter_mtproxy_connection_types,
     normalize_username,
     random_letters_username,
     telethon_connection_class,
-    telethon_graceful_disconnect,
 )
 from config import Settings
 from db import Database
@@ -345,17 +339,10 @@ def register_handlers(client: TelegramClient, ctx: dict[str, Any]) -> None:
                 "Финальную проверку делай в Telegram: Настройки → Профиль → Имя пользователя."
             )
         else:
-            if settings.mtproxy:
-                net = (
-                    "<b>Сеть:</b> бот и проверка ников к Telegram идут через Telethon (MTProto) "
-                    f"и <b>MTProxy</b> {settings.mtproxy.host}:{settings.mtproxy.port}. "
-                    "Сайт Fragment — только HTTP(S), отдельно от MTProto (см. <code>PROXY</code> в .env)."
-                )
-            else:
-                net = (
-                    "<b>Сеть:</b> бот к Telegram подключён через Telethon (MTProto), без Bot API long polling. "
-                    "Сайт Fragment — только HTTP(S), отдельно от MTProto (см. <code>PROXY</code> в .env)."
-                )
+            net = (
+                "<b>Сеть:</b> бот к Telegram подключён через Telethon (MTProto), без Bot API long polling. "
+                "Сайт Fragment — обычный HTTPS."
+            )
             intro = (
                 "Привет! Я помогаю находить <b>свободные для установки</b> Telegram username "
                 "и оцениваю их ценность по рынку Fragment.\n\n"
@@ -423,7 +410,6 @@ def register_handlers(client: TelegramClient, ctx: dict[str, Any]) -> None:
                     fetch_fragment_gift_price,
                     url,
                     ton_to_usd=settings.ton_to_usd,
-                    proxies=settings.proxy.requests_proxies if settings.proxy else None,
                 )
             )
         except Exception as e:
@@ -613,88 +599,25 @@ def register_handlers(client: TelegramClient, ctx: dict[str, Any]) -> None:
 
 async def _async_main(settings: Settings, db: Database, checker: UsernameChecker | DisabledUsernameChecker) -> None:
     session_bot = f"{settings.telethon_session}_bot_api"
-    if settings.mtproxy:
-        mp = settings.mtproxy
-        last_exc: Exception | None = None
-        winning_cls: type | None = None
-        for conn_cls in iter_mtproxy_connection_types(settings.mtproxy_telethon_connection):
-            probe = TelegramClient(
-                MemorySession(),
-                settings.api_id,
-                settings.api_hash,
-                connection=conn_cls,
-                proxy=(mp.host, mp.port, mp.secret),
-                timeout=settings.telethon_timeout,
-                connection_retries=settings.telethon_connection_retries,
-            )
-            try:
-                await probe.start(bot_token=settings.bot_token)
-                winning_cls = conn_cls
-                log.info("Бот: MTProxy тест TCP %s прошёл (MemorySession)", conn_cls.__name__)
-                break
-            except (
-                OSError,
-                ConnectionError,
-                IncompleteReadError,
-                ConnectionResetError,
-                EOFError,
-                ValueError,
-            ) as e:
-                last_exc = e
-                log.warning(
-                    "MTProxy (бот) TCP %s: тест не прошёл (%s), следующий режим",
-                    conn_cls.__name__,
-                    e,
-                )
-            finally:
-                await telethon_graceful_disconnect(probe)
-        if winning_cls is None:
-            raise RuntimeError(
-                "MTProxy: ни один режим TCP не подошёл. Проверьте tg://proxy и секрет в официальном Telegram."
-            ) from last_exc
-
-        client = TelegramClient(
-            session_bot,
-            settings.api_id,
-            settings.api_hash,
-            connection=winning_cls,
-            proxy=(mp.host, mp.port, mp.secret),
-            timeout=settings.telethon_timeout,
-            connection_retries=settings.telethon_connection_retries,
-        )
-        await client.start(bot_token=settings.bot_token)
-    else:
-        th_proxy = None
-        if settings.proxy and settings.telethon_use_proxy:
-            th_proxy = settings.proxy.telethon_proxy
-        client = TelegramClient(
-            session_bot,
-            settings.api_id,
-            settings.api_hash,
-            proxy=th_proxy,
-            timeout=settings.telethon_timeout,
-            connection_retries=settings.telethon_connection_retries,
-            connection=telethon_connection_class(settings.telethon_connection),
-        )
+    client = TelegramClient(
+        session_bot,
+        settings.api_id,
+        settings.api_hash,
+        proxy=None,
+        timeout=settings.telethon_timeout,
+        connection_retries=settings.telethon_connection_retries,
+        connection=telethon_connection_class(settings.telethon_connection),
+    )
     assert client is not None
     ctx: dict[str, Any] = {"db": db, "settings": settings, "checker": checker}
     register_handlers(client, ctx)
 
     checker_started = False
     try:
-        if settings.mtproxy is None:
-            await client.start(bot_token=settings.bot_token)
+        await client.start(bot_token=settings.bot_token)
         me = await client.get_me()
         uname = getattr(me, "username", None) or me.id
-        if settings.mtproxy:
-            log.info(
-                "Bot v0.2 (Telethon MTProto + MTProxy %s:%s) @%s",
-                settings.mtproxy.host,
-                settings.mtproxy.port,
-                uname,
-            )
-        else:
-            log.info("Bot v0.2 (Telethon MTProto, без MTProxy) @%s", uname)
+        log.info("Bot v0.2 (Telethon MTProto) @%s", uname)
 
         if getattr(checker, "uses_telethon", False):
             await checker.start()

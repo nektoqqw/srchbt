@@ -26,7 +26,6 @@ from functools import partial
 from typing import Any, Final
 
 from aiogram import BaseMiddleware, Bot, Dispatcher, F
-from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.enums import ChatAction
 from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.types import (
@@ -851,7 +850,6 @@ async def perform_appraisals_batch(
     await message.bot.send_chat_action(message.chat.id, ChatAction.TYPING)
 
     listed_map: dict[str, bool | None] = {}
-    proxies = settings.proxy.requests_proxies if settings.proxy else None
     if settings.bot_mode == "fragment" and len(tokens) <= 3:
         for t in tokens:
             if not is_valid_telegram_username(t):
@@ -862,7 +860,6 @@ async def perform_appraisals_batch(
                     username_listed_on_fragment,
                     t,
                     timeout_s=22,
-                    proxies=proxies,
                 )
             except Exception:
                 log.exception("fragment listing check %s", t)
@@ -1032,52 +1029,18 @@ def build_checker(settings: Settings) -> UsernameChecker | DisabledUsernameCheck
         return DisabledUsernameChecker()
     if not settings.api_id or not settings.api_hash:
         return DisabledUsernameChecker()
-    if settings.mtproxy and settings.telethon_use_mtproxy:
-        return UsernameChecker(
-            settings.api_id,
-            settings.api_hash,
-            settings.telethon_session,
-            delay_between_checks=settings.telethon_check_delay_s,
-            mtproxy=settings.mtproxy,
-            mtproxy_tcp_mode=settings.mtproxy_telethon_connection,
-            timeout=settings.telethon_timeout,
-            connection_retries=settings.telethon_connection_retries,
-        )
-    th_proxy = None
-    if settings.proxy and settings.telethon_use_proxy:
-        th_proxy = settings.proxy.telethon_proxy
     return UsernameChecker(
         settings.api_id,
         settings.api_hash,
         settings.telethon_session,
         delay_between_checks=settings.telethon_check_delay_s,
-        proxy=th_proxy,
         timeout=settings.telethon_timeout,
         connection_retries=settings.telethon_connection_retries,
         connection=telethon_connection_class(settings.telethon_connection),
     )
 
 
-def _proxy_url_for_aiogram(httpx_proxy_url: str) -> str:
-    """
-    aiohttp_socks / python_socks не принимают схему socks5h:// (как в PROXY_URL у httpx).
-
-    Aiogram в ProxyConnector всё равно передаёт rdns=True — это близко к «DNS через прокси».
-    """
-    u = httpx_proxy_url.strip()
-    lowered = u.lower()
-    if lowered.startswith("socks5h://"):
-        return "socks5://" + u[len("socks5h://") :]
-    if lowered.startswith("socks4a://"):
-        return "socks4://" + u[len("socks4a://") :]
-    return u
-
-
 def create_bot(settings: Settings) -> Bot:
-    if settings.proxy and settings.bot_api_use_proxy:
-        proxy_url = _proxy_url_for_aiogram(settings.proxy.httpx_proxy_url)
-        session = AiohttpSession(proxy=proxy_url)
-        return Bot(settings.bot_token, session=session)
     return Bot(settings.bot_token)
 
 
@@ -1107,7 +1070,6 @@ async def _find_one_username_fragment(
     message_id: int,
     length: int,
     max_attempts: int,
-    proxies: dict[str, str] | None,
     delay_s: float,
     lucky: bool = False,
     checker: Any,
@@ -1158,7 +1120,6 @@ async def _find_one_username_fragment(
                 username_listed_on_fragment,
                 cand,
                 timeout_s=fragment_timeout_s,
-                proxies=proxies,
             )
         except Exception:
             log.exception("проверка кандидата %s", cand)
@@ -1765,7 +1726,6 @@ async def on_callback_frag(
             )
             return
 
-        proxies = settings.proxy.requests_proxies if settings.proxy else None
         is_plus = db.is_plus(uid)
         max_attempts = 420 if is_plus else 140
         if getattr(checker, "uses_telethon", False):
@@ -1791,7 +1751,6 @@ async def on_callback_frag(
                 message_id=msg_id,
                 length=length,
                 max_attempts=max_attempts,
-                proxies=proxies,
                 delay_s=settings.fragment_request_delay_s,
                 lucky=lucky_spin,
                 checker=checker,
@@ -2289,7 +2248,6 @@ async def cmd_import_fragment(
                 fetch_fragment_gift_price,
                 url,
                 ton_to_usd=settings.ton_to_usd,
-                proxies=settings.proxy.requests_proxies if settings.proxy else None,
             )
         )
     except Exception as e:
@@ -2751,14 +2709,12 @@ async def on_callback_v2(cb: CallbackQuery, db: Database, settings: Settings, ch
             return
         await cb.message.edit_text("<b>Считаю оценку…</b>", parse_mode="HTML")
         listed_map2: dict[str, bool | None] = {}
-        proxies = settings.proxy.requests_proxies if settings.proxy else None
         if settings.bot_mode == "fragment":
             try:
                 listed_map2[uname] = await asyncio.to_thread(
                     username_listed_on_fragment,
                     uname,
                     timeout_s=22,
-                    proxies=proxies,
                 )
             except Exception:
                 log.exception("val:go fragment")
@@ -3133,13 +3089,9 @@ async def aiogram_main() -> None:
         if getattr(checker, "uses_telethon", False):
             await checker.start()
         mode = settings.bot_mode
-        proxy_note = ""
-        if settings.proxy and settings.bot_api_use_proxy:
-            proxy_note = " (бот API через proxy)"
         log.info(
-            "Aiogram запущен, BOT_MODE=%s%s",
+            "Aiogram запущен, BOT_MODE=%s",
             mode,
-            proxy_note,
         )
 
     async def shutdown() -> None:

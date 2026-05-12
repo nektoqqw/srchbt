@@ -24,7 +24,6 @@ def username_listed_on_fragment(
     username: str,
     *,
     timeout_s: int = 25,
-    proxies: dict[str, str] | None = None,
 ) -> bool:
     """
     True, если @username фигурирует на Fragment (продажа, аукцион, «занят», уже куплен и т.п.).
@@ -42,7 +41,7 @@ def username_listed_on_fragment(
         "Accept-Language": "en-US,en;q=0.9,ru;q=0.8",
     }
     try:
-        resp = requests.get(url, headers=headers, timeout=timeout_s, proxies=proxies)
+        resp = requests.get(url, headers=headers, timeout=timeout_s)
         resp.raise_for_status()
     except requests.RequestException as e:
         log.warning("Fragment запрос для %s: %s", username, e)
@@ -79,7 +78,6 @@ def collect_usernames_not_on_fragment(
     length: int,
     max_attempts: int,
     max_found: int,
-    proxies: dict[str, str] | None = None,
     timeout_s: int = 25,
     delay_between_requests_s: float = 0.12,
 ) -> tuple[list[str], int]:
@@ -97,7 +95,7 @@ def collect_usernames_not_on_fragment(
             continue
         seen.add(cand)
         attempts += 1
-        if not username_listed_on_fragment(cand, timeout_s=timeout_s, proxies=proxies):
+        if not username_listed_on_fragment(cand, timeout_s=timeout_s):
             found.append(cand)
         if delay_between_requests_s > 0:
             time.sleep(delay_between_requests_s)
@@ -175,7 +173,6 @@ def fetch_fragment_gift_price(
     *,
     timeout_s: int = 20,
     ton_to_usd: float = 2.0,
-    proxies: dict[str, str] | None = None,
 ) -> FragmentGiftPrice:
     # NOTE: Fragment может менять HTML. В MVP делаем "best-effort" с fallback.
     parsed = urlparse(url)
@@ -191,7 +188,7 @@ def fetch_fragment_gift_price(
         "Accept-Language": "en-US,en;q=0.9,ru;q=0.8",
     }
 
-    resp = requests.get(url, headers=headers, timeout=timeout_s, proxies=proxies)
+    resp = requests.get(url, headers=headers, timeout=timeout_s)
     resp.raise_for_status()
     html = resp.text
 

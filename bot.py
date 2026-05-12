@@ -29,8 +29,6 @@ from telegram.ext import (
     MessageHandler,
     filters,
 )
-from telegram.request import HTTPXRequest
-
 from checker import (
     DisabledUsernameChecker,
     UsernameChecker,
@@ -171,8 +169,7 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if text == BTN_SUPPORT:
         if settings.bot_mode == "fragment":
             tech = (
-                "Техническая часть: подбор и проверка по страницам <b>fragment.com</b> (HTTP). "
-                "При блокировках используйте <code>PROXY</code> в .env."
+                "Техническая часть: подбор и проверка по страницам <b>fragment.com</b> (HTTPS)."
             )
         else:
             tech = (
@@ -302,13 +299,11 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                     "Это может занять несколько минут (каждый кандидат — отдельный запрос).",
                     parse_mode="HTML",
                 )
-                proxies = settings.proxy.requests_proxies if settings.proxy else None
                 found, attempts = await asyncio.to_thread(
                     collect_usernames_not_on_fragment,
                     length=length,
                     max_attempts=max_attempts,
                     max_found=max_found,
-                    proxies=proxies,
                     timeout_s=25,
                     delay_between_requests_s=settings.fragment_request_delay_s,
                 )
@@ -437,34 +432,14 @@ def main() -> None:
             "Telethon-проверка @username выключена (нет API/HASH, disabled или режим fragment без ключей)."
         )
     else:
-        if settings.mtproxy and settings.telethon_use_mtproxy:
-            log.info(
-                "Telethon: MTProxy %s:%s (только проверка ников; бот — long polling через PROXY при наличии).",
-                settings.mtproxy.host,
-                settings.mtproxy.port,
-            )
-            checker = UsernameChecker(
-                settings.api_id,
-                settings.api_hash,
-                settings.telethon_session,
-                mtproxy=settings.mtproxy,
-                mtproxy_tcp_mode=settings.mtproxy_telethon_connection,
-                timeout=settings.telethon_timeout,
-                connection_retries=settings.telethon_connection_retries,
-            )
-        else:
-            th_proxy = None
-            if settings.proxy and settings.telethon_use_proxy:
-                th_proxy = settings.proxy.telethon_proxy
-            checker = UsernameChecker(
-                settings.api_id,
-                settings.api_hash,
-                settings.telethon_session,
-                proxy=th_proxy,
-                timeout=settings.telethon_timeout,
-                connection_retries=settings.telethon_connection_retries,
-                connection=telethon_connection_class(settings.telethon_connection),
-            )
+        checker = UsernameChecker(
+            settings.api_id,
+            settings.api_hash,
+            settings.telethon_session,
+            timeout=settings.telethon_timeout,
+            connection_retries=settings.telethon_connection_retries,
+            connection=telethon_connection_class(settings.telethon_connection),
+        )
 
     if settings.use_mtproto_bot:
         from mtproxy_bot_runner import run_telethon_mtproto_bot_stack
@@ -478,14 +453,6 @@ def main() -> None:
         .post_init(post_init)
         .post_shutdown(post_shutdown)
     )
-    if settings.proxy and settings.bot_api_use_proxy:
-        builder = builder.request(HTTPXRequest(proxy=settings.proxy.httpx_proxy_url))
-        if settings.mtproxy and settings.telethon_use_mtproxy:
-            log.info("Long polling через PROXY; Telethon (проверка ников) — через MTProxy.")
-    elif settings.proxy and not settings.bot_api_use_proxy:
-        log.info(
-            "BOT_API_USE_PROXY=0: Bot API без HTTP/SOCKS; PROXY для Fragment/requests сохранён."
-        )
     application = builder.build()
     application.bot_data["db"] = db
     application.bot_data["settings"] = settings

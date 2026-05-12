@@ -222,9 +222,6 @@ sudo systemctl restart telegram-username-bot
 3. **Бот не видит `.env`**  
    `WorkingDirectory` в systemd должен указывать на корень проекта, где лежит `.env`.
 
-4. **Прокси**  
-   Если на сервере другие сетевые условия, проверьте переменные `PROXY` / `BOT_API_USE_PROXY` так же, как на Windows.
-
 ---
 
 ## Краткий чеклист

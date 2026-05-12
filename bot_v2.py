@@ -4,8 +4,7 @@ Telegram-бот MVP v0.2:
   У Bot API официальной замены нет.
 - Оценка ценности — по импортированным данным Fragment (веб).
 - Режим без Telethon: USERNAME_CHECK_MODE=disabled (только оценка, без проверки занятости).
-- Telethon без прокси при общем PROXY: TELETHON_USE_PROXY=0
-- Весь бот к Telegram через MTProto (Telethon): USE_MTProto_BOT=1 или MTPROXY (Fragment — HTTP, см. PROXY)
+- Весь бот к Telegram через MTProto (Telethon): USE_MTProto_BOT=1 (без long polling Bot API).
 """
 
 from __future__ import annotations
@@ -33,8 +32,6 @@ from telegram.ext import (
     filters,
     Application,
 )
-from telegram.request import HTTPXRequest
-
 from checker import (
     DisabledUsernameChecker,
     UsernameChecker,
@@ -152,12 +149,6 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             "через Bot API <b>нельзя</b> — это умеет только MTProto (Telethon). "
             "Финальную проверку делай в Telegram: Настройки → Профиль → Имя пользователя."
         )
-    elif not settings.telethon_use_proxy and settings.proxy:
-        intro = (
-            "Привет! Я помогаю находить <b>свободные для установки</b> Telegram username (через Telethon) "
-            "и оцениваю ценность по <b>Fragment</b>.\n\n"
-            "<b>Telethon без прокси</b>, Bot API и Fragment — через прокси (см. TELETHON_USE_PROXY в .env)."
-        )
     else:
         intro = (
             "Привет! Я помогаю находить <b>свободные для установки</b> Telegram username и оцениваю их ценность по рынку Fragment."
@@ -218,7 +209,6 @@ async def cmd_import_fragment(update: Update, context: ContextTypes.DEFAULT_TYPE
                 fetch_fragment_gift_price,
                 url,
                 ton_to_usd=settings.ton_to_usd,
-                proxies=settings.proxy.requests_proxies if settings.proxy else None,
             )
         )
     except Exception as e:
@@ -754,46 +744,14 @@ def main() -> None:
             "USERNAME_CHECK_MODE=disabled: Telethon отключён — «свободен для установки» не проверяется, только оценка/Fragment."
         )
     else:
-        if settings.mtproxy and settings.telethon_use_mtproxy:
-            log.info(
-                "Telethon (проверка @username): MTProto через MTProxy %s:%s.",
-                settings.mtproxy.host,
-                settings.mtproxy.port,
-            )
-            if settings.proxy:
-                log.info(
-                    "Long polling Bot API и Fragment — через PROXY; Telethon к MTProxy не использует PROXY."
-                )
-            checker = UsernameChecker(
-                settings.api_id,
-                settings.api_hash,
-                settings.telethon_session,
-                mtproxy=settings.mtproxy,
-                mtproxy_tcp_mode=settings.mtproxy_telethon_connection,
-                timeout=settings.telethon_timeout,
-                connection_retries=settings.telethon_connection_retries,
-            )
-        else:
-            if settings.mtproxy and not settings.telethon_use_mtproxy:
-                log.info(
-                    "MTPROXY задан, но TELETHON_USE_MTPROXY=0 — проверка @username через PROXY (SOCKS/HTTP)."
-                )
-            th_proxy = None
-            if settings.proxy and settings.telethon_use_proxy:
-                th_proxy = settings.proxy.telethon_proxy
-            checker = UsernameChecker(
-                settings.api_id,
-                settings.api_hash,
-                settings.telethon_session,
-                proxy=th_proxy,
-                timeout=settings.telethon_timeout,
-                connection_retries=settings.telethon_connection_retries,
-                connection=telethon_connection_class(settings.telethon_connection),
-            )
-            if settings.proxy and not settings.telethon_use_proxy:
-                log.info("Прокси для Bot API/Fragment включён; Telethon идёт БЕЗ прокси (TELETHON_USE_PROXY=0).")
-            elif settings.proxy and settings.telethon_use_proxy:
-                log.info("Прокси включён для Bot API, Fragment и Telethon.")
+        checker = UsernameChecker(
+            settings.api_id,
+            settings.api_hash,
+            settings.telethon_session,
+            timeout=settings.telethon_timeout,
+            connection_retries=settings.telethon_connection_retries,
+            connection=telethon_connection_class(settings.telethon_connection),
+        )
 
     if settings.use_mtproto_bot:
         from mtproxy_bot_runner import run_telethon_mtproto_bot_stack
@@ -807,15 +765,6 @@ def main() -> None:
         .post_init(post_init)
         .post_shutdown(post_shutdown)
     )
-    if settings.proxy and settings.bot_api_use_proxy:
-        builder = builder.request(HTTPXRequest(proxy=settings.proxy.httpx_proxy_url))
-        if settings.mtproxy and settings.telethon_use_mtproxy:
-            log.info("Long polling идёт через PROXY; Telethon (проверка ников) — через MTProxy.")
-    elif settings.proxy and not settings.bot_api_use_proxy:
-        log.info(
-            "BOT_API_USE_PROXY=0: long polling к api.telegram.org без HTTP/SOCKS; "
-            "PROXY по-прежнему для Fragment/requests; Telethon — по своим настройкам (MTProxy/PROXY)."
-        )
     application = builder.build()
     application.bot_data["db"] = db
     application.bot_data["settings"] = settings

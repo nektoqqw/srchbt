@@ -8,8 +8,6 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from proxy_config import MtProxySettings, ProxySettings, load_mtproxy_settings, load_proxy_settings
-
 load_dotenv()
 
 
@@ -39,24 +37,14 @@ class Settings:
     db_path: Path
     free_search_limit: int = 4
     ton_to_usd: float = 2.0
-    proxy: ProxySettings | None = None
-    mtproxy: MtProxySettings | None = None
     telethon_timeout: int = 120
     telethon_connection_retries: int = 10
     # telethon | disabled — см. USERNAME_CHECK_MODE
     username_check_mode: str = "telethon"
-    # если True и задан PROXY — Telethon идёт через прокси; если False — Telethon напрямую, остальное с прокси
-    telethon_use_proxy: bool = True
-    # если True и задан MTPROXY — Telethon (чекер @username) идёт через MTProto-прокси; если False — через обычный PROXY (SOCKS/HTTP) или напрямую
-    telethon_use_mtproxy: bool = True
-    # если True и задан PROXY — long polling Bot API через HTTPX с прокси; если False — getUpdates напрямую (PROXY остаётся для Fragment/requests)
-    bot_api_use_proxy: bool = True
-    # True — бот к Telegram только через Telethon (MTProto), без httpx long polling; Fragment по-прежнему HTTP (PROXY)
+    # True — бот к Telegram только через Telethon (MTProto), без long polling Bot API
     use_mtproto_bot: bool = False
     # full | obfuscated | intermediate | abridged — см. TELETHON_CONNECTION
     telethon_connection: str = "full"
-    # randomized | intermediate | abridged — тип TCP к MTProxy (см. MTPROXY_TELETHON_CONNECTION)
-    mtproxy_telethon_connection: str = "randomized"
     # fragment — только BOT_TOKEN + проверка ников через fragment.com (без Telethon)
     # telethon — проверка через MTProto (нужны TELEGRAM_API_ID / TELEGRAM_API_HASH)
     bot_mode: str = "fragment"
@@ -112,9 +100,6 @@ def load_settings() -> Settings:
     except ValueError:
         ton_to_usd = 2.0
 
-    proxy = load_proxy_settings()
-    mtproxy = load_mtproxy_settings()
-
     try:
         telethon_timeout = int((os.environ.get("TELETHON_TIMEOUT") or "120").strip())
     except ValueError:
@@ -128,20 +113,6 @@ def load_settings() -> Settings:
     if username_check_mode not in ("telethon", "disabled"):
         username_check_mode = "telethon"
 
-    th_proxy_raw = (os.environ.get("TELETHON_USE_PROXY") or "1").strip().lower()
-    telethon_use_proxy = th_proxy_raw not in ("0", "false", "no", "off")
-
-    th_mt_raw = (os.environ.get("TELETHON_USE_MTPROXY") or "").strip().lower()
-    if th_mt_raw in ("0", "false", "no", "off"):
-        telethon_use_mtproxy = False
-    elif th_mt_raw in ("1", "true", "yes", "on"):
-        telethon_use_mtproxy = True
-    else:
-        telethon_use_mtproxy = mtproxy is not None
-
-    bot_api_raw = (os.environ.get("BOT_API_USE_PROXY") or "1").strip().lower()
-    bot_api_use_proxy = bot_api_raw not in ("0", "false", "no", "off")
-
     mtbot_raw = (os.environ.get("USE_MTProto_BOT") or "0").strip().lower()
     use_mtproto_bot = mtbot_raw in ("1", "true", "yes", "on")
     if bot_mode == "fragment" and use_mtproto_bot:
@@ -150,10 +121,6 @@ def load_settings() -> Settings:
     telethon_connection = (os.environ.get("TELETHON_CONNECTION") or "full").strip().lower()
     if telethon_connection not in ("full", "obfuscated", "intermediate", "abridged"):
         telethon_connection = "full"
-
-    mtproxy_tc = (os.environ.get("MTPROXY_TELETHON_CONNECTION") or "randomized").strip().lower()
-    if mtproxy_tc not in ("randomized", "intermediate", "abridged"):
-        mtproxy_tc = "randomized"
 
     # В fragment API не обязателен; если ID/HASH не заданы — Telethon-чекер отключён.
     api_id_int = 0
@@ -232,17 +199,11 @@ def load_settings() -> Settings:
         admin_ids=admins,
         db_path=db,
         ton_to_usd=ton_to_usd,
-        proxy=proxy,
-        mtproxy=mtproxy,
         telethon_timeout=max(10, telethon_timeout),
         telethon_connection_retries=max(1, telethon_connection_retries),
         username_check_mode=username_check_mode,
-        telethon_use_proxy=telethon_use_proxy,
-        telethon_use_mtproxy=telethon_use_mtproxy,
-        bot_api_use_proxy=bot_api_use_proxy,
         use_mtproto_bot=use_mtproto_bot,
         telethon_connection=telethon_connection,
-        mtproxy_telethon_connection=mtproxy_tc,
         bot_mode=bot_mode,
         fragment_request_delay_s=fragment_delay,
         fragment_roll_timeout_s=fragment_roll_timeout_s,
