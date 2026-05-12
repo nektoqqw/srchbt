@@ -1,0 +1,104 @@
+"""Тарифы подписки PLUS (рубли) — только отображение; активация после оплаты у владельца бота."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from html import escape as html_escape
+
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+
+
+@dataclass(frozen=True)
+class PlusTariff:
+    key: str
+    title_ru: str
+    price_rub: int
+    days: int | None  # None = навсегда
+
+
+PLUS_TARIFFS: tuple[PlusTariff, ...] = (
+    PlusTariff("1d", "1 день", 40, 1),
+    PlusTariff("3d", "3 дня", 70, 3),
+    PlusTariff("7d", "Неделя", 120, 7),
+    PlusTariff("30d", "Месяц", 200, 30),
+    PlusTariff("183d", "Полгода", 550, 183),
+    PlusTariff("365d", "Год", 800, 365),
+    PlusTariff("forever", "Навсегда", 1500, None),
+)
+
+
+def plus_tariff_by_key(key: str) -> PlusTariff | None:
+    k = key.strip().lower()
+    for t in PLUS_TARIFFS:
+        if t.key == k:
+            return t
+    return None
+
+
+def kb_plus_tariffs() -> InlineKeyboardMarkup:
+    """Сетка тарифов + промокод."""
+    rows: list[list[InlineKeyboardButton]] = []
+    row: list[InlineKeyboardButton] = []
+    for i, t in enumerate(PLUS_TARIFFS):
+        row.append(
+            InlineKeyboardButton(
+                text=f"{t.title_ru} · {t.price_rub} ₽",
+                callback_data=f"plus:tariff:{t.key}",
+            )
+        )
+        if len(row) == 2:
+            rows.append(row)
+            row = []
+    if row:
+        rows.append(row)
+    rows.append(
+        [
+            InlineKeyboardButton(
+                text="🗝 У меня есть промокод",
+                callback_data="plus:enter",
+            )
+        ]
+    )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def plus_shop_intro_html() -> str:
+    return (
+        f"<b>♠️ Подписка PLUS</b>\n\n"
+        "Снимает лимит на <b>подбор имён</b> на выбранный срок и даёт <b>сохранение никнеймов</b>.\n\n"
+        "<b>Выберите срок:</b>"
+    )
+
+
+def kb_plus_payment_nav() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="◀ Все тарифы",
+                    callback_data="plus:shop",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🗝 Ввести промокод",
+                    callback_data="plus:enter",
+                )
+            ],
+        ]
+    )
+
+
+def plus_tariff_payment_html(t: PlusTariff, *, payment_hint: str) -> str:
+    period = (
+        "без срока (навсегда)"
+        if t.days is None
+        else f"<b>{t.days}</b> календарных дней"
+    )
+    return (
+        f"<b>♠️ Оплата PLUS</b>\n\n"
+        f"Тариф: <b>{html_escape(t.title_ru)}</b>\n"
+        f"Срок: {period}\n"
+        f"К оплате: <b>{t.price_rub} ₽</b>\n\n"
+        f"{payment_hint}"
+    )
