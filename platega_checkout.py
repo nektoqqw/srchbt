@@ -24,6 +24,7 @@ from plus_tariffs import (
     plus_subscriber_status_banner_html,
     plus_tariff_payment_html,
 )
+from tariff_pricing import sale_price_float
 
 log = logging.getLogger(__name__)
 
@@ -181,7 +182,7 @@ async def show_plus_tariff_payment_screen(
                 secret=settings.platega_secret,
                 api_base=settings.platega_api_base,
                 payment_method=settings.platega_payment_method,
-                amount_rub=float(t.price_rub),
+                amount_rub=sale_price_float(t.price_rub),
                 currency="RUB",
                 description=f"PLUS {t.title_ru}",
                 return_url=ret_url,
@@ -203,7 +204,7 @@ async def show_plus_tariff_payment_screen(
                         user_id=uid,
                         product_kind="plus",
                         tariff_key=t.key,
-                        amount_rub=float(t.price_rub),
+                        amount_rub=sale_price_float(t.price_rub),
                         currency="RUB",
                         pay_url=pay_url,
                     )
@@ -262,7 +263,7 @@ async def show_luck_tariff_payment_screen(
                 secret=settings.platega_secret,
                 api_base=settings.platega_api_base,
                 payment_method=settings.platega_payment_method,
-                amount_rub=float(t.price_rub),
+                amount_rub=sale_price_float(t.price_rub),
                 currency="RUB",
                 description=f"Удача {t.title_ru}",
                 return_url=ret_url,
@@ -284,7 +285,7 @@ async def show_luck_tariff_payment_screen(
                         user_id=uid,
                         product_kind="luck",
                         tariff_key=t.key,
-                        amount_rub=float(t.price_rub),
+                        amount_rub=sale_price_float(t.price_rub),
                         currency="RUB",
                         pay_url=pay_url,
                     )

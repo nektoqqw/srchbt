@@ -9,6 +9,8 @@ from zoneinfo import ZoneInfo
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
+from tariff_pricing import TARIFF_DISCOUNT_PERCENT, sale_price_rub, tariff_payment_price_line_html
+
 
 @dataclass(frozen=True)
 class LuckTariff:
@@ -41,7 +43,7 @@ def kb_luck_tariffs() -> InlineKeyboardMarkup:
     for i, t in enumerate(LUCK_TARIFFS):
         row.append(
             InlineKeyboardButton(
-                text=f"{t.title_ru} · {t.price_rub} ₽",
+                text=f"{t.title_ru} · {sale_price_rub(t.price_rub)} ₽ −{TARIFF_DISCOUNT_PERCENT}%",
                 callback_data=f"luck:tariff:{t.key}",
             )
         )
@@ -103,6 +105,7 @@ def luck_subscriber_status_banner_html(
 def luck_shop_intro_html() -> str:
     return (
         "<b>🍀 Режим «Удача»</b>\n\n"
+        f"<b>Скидка {TARIFF_DISCOUNT_PERCENT}%</b> на все тарифы ниже — в кнопках цена со скидкой.\n\n"
         "<i>Тарифы ниже — только при активной подписке <b>PLUS</b>.</i>\n\n"
         "При подборе из каталога чаще всплывают <b>симметричные и «удачные»</b> "
         "комбинации при той же цене.\n\n"
@@ -163,6 +166,6 @@ def luck_tariff_payment_html(
         f"{status_banner}"
         f"Тариф: <b>{html_escape(t.title_ru)}</b>\n"
         f"Срок: {period}\n"
-        f"К оплате: <b>{t.price_rub} ₽</b>\n\n"
+        f"{tariff_payment_price_line_html(t.price_rub)}\n\n"
         f"{payment_hint}{auto}"
     )

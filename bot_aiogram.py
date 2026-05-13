@@ -82,6 +82,7 @@ from plus_tariffs import (
     plus_subscriber_status_banner_html,
     plus_tariff_by_key,
 )
+from tariff_pricing import TARIFF_DISCOUNT_PERCENT, sale_price_rub
 from roll_filters import (
     RollFilters,
     filters_summary_ru,
@@ -2539,7 +2540,8 @@ async def cmd_activate_plus(
         db.extend_plus_days(uid, t.days)
     await message.answer(
         f"PLUS для <code>{uid}</code>: <b>{html.escape(t.title_ru)}</b> "
-        f"(прайс <code>{t.price_rub} ₽</code>).",
+        f"(со скидкой <code>{sale_price_rub(t.price_rub)} ₽</code>, "
+        f"без скидки <code>{t.price_rub} ₽</code> · −{TARIFF_DISCOUNT_PERCENT}%).",
         parse_mode="HTML",
     )
 
@@ -2582,7 +2584,8 @@ async def cmd_activate_luck(
         db.extend_luck_delta(uid_act, lt.delta)
     await message.answer(
         f"«Удача» для <code>{uid_act}</code>: <b>{html.escape(lt.title_ru)}</b> "
-        f"(прайс <code>{lt.price_rub} ₽</code>).",
+        f"(со скидкой <code>{sale_price_rub(lt.price_rub)} ₽</code>, "
+        f"без скидки <code>{lt.price_rub} ₽</code> · −{TARIFF_DISCOUNT_PERCENT}%).",
         parse_mode="HTML",
     )
 

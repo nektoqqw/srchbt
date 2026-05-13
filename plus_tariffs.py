@@ -9,6 +9,8 @@ from zoneinfo import ZoneInfo
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
+from tariff_pricing import TARIFF_DISCOUNT_PERCENT, sale_price_rub, tariff_payment_price_line_html
+
 
 @dataclass(frozen=True)
 class PlusTariff:
@@ -44,7 +46,7 @@ def kb_plus_tariffs() -> InlineKeyboardMarkup:
     for i, t in enumerate(PLUS_TARIFFS):
         row.append(
             InlineKeyboardButton(
-                text=f"{t.title_ru} · {t.price_rub} ₽",
+                text=f"{t.title_ru} · {sale_price_rub(t.price_rub)} ₽ −{TARIFF_DISCOUNT_PERCENT}%",
                 callback_data=f"plus:tariff:{t.key}",
             )
         )
@@ -107,6 +109,7 @@ def plus_shop_intro_html(*, status_banner: str = "") -> str:
     return (
         f"<b>♠️ Подписка PLUS</b>\n\n"
         f"{status_banner}"
+        f"<b>Скидка {TARIFF_DISCOUNT_PERCENT}%</b> на все сроки — в кнопках указана цена со скидкой.\n\n"
         "Снимает лимит на <b>подбор имён</b> на выбранный срок и даёт <b>сохранение никнеймов</b>.\n\n"
         "<b>Выберите срок:</b>"
     )
@@ -165,6 +168,6 @@ def plus_tariff_payment_html(
         f"{status_banner}"
         f"Тариф: <b>{html_escape(t.title_ru)}</b>\n"
         f"Срок: {period}\n"
-        f"К оплате: <b>{t.price_rub} ₽</b>\n\n"
+        f"{tariff_payment_price_line_html(t.price_rub)}\n\n"
         f"{payment_hint}{auto}"
     )
