@@ -1,16 +1,17 @@
-"""Клиент Platega.io: создание транзакции (оплата). Документация: app.platega.io /transaction/process."""
+"""Клиент Platega.io: создание транзакции (оплата). Документация: docs.platega.io — POST /transaction/process."""
 
 from __future__ import annotations
 
 import json
 import logging
-import uuid
 from typing import Any
 
 import requests
 
 log = logging.getLogger(__name__)
 
+# Базовый URL по документации Platega («Начало работы»): https://app.platega.io/
+# При сбоях можно задать в .env другой хост, например PLATEGA_API_BASE=https://api.platega.io
 DEFAULT_BASE = "https://app.platega.io"
 
 
@@ -30,19 +31,17 @@ def create_platega_transaction(
     return_url: str,
     failed_url: str,
     payload: str,
-    client_transaction_id: str | None = None,
     timeout_s: float = 45.0,
 ) -> dict[str, Any]:
     """
     POST /transaction/process.
-    В теле передаём свой ``id`` (UUID), чтобы не дублировать транзакции при повторе запроса.
+
+    Поле ``id`` в теле **нельзя** передавать — ID генерирует Platega (иначе ошибки / риск для магазина).
     """
     base = (api_base or DEFAULT_BASE).rstrip("/")
     url = f"{base}/transaction/process"
-    tx_id = client_transaction_id or str(uuid.uuid4())
     body: dict[str, Any] = {
         "paymentMethod": int(payment_method),
-        "id": tx_id,
         "paymentDetails": {"amount": float(amount_rub), "currency": currency.upper()},
         "description": (description or "")[:512],
         "return": return_url,

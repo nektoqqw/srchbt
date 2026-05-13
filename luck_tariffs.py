@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from html import escape as html_escape
+from zoneinfo import ZoneInfo
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
@@ -60,6 +61,45 @@ def kb_luck_tariffs() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+def format_luck_expires_human_ru(luck_expires_at: str | None) -> str:
+    if not luck_expires_at:
+        return ""
+    raw = str(luck_expires_at).strip()
+    try:
+        dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return raw
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    try:
+        loc = dt.astimezone(ZoneInfo("Europe/Moscow"))
+        return loc.strftime("%d.%m.%Y %H:%M") + " МСК"
+    except Exception:
+        return dt.astimezone(timezone.utc).strftime("%d.%m.%Y %H:%M") + " UTC"
+
+
+def luck_subscriber_status_banner_html(
+    *,
+    is_luck: bool,
+    luck_forever: int,
+    luck_expires_at: str | None,
+) -> str:
+    if not is_luck:
+        return ""
+    if int(luck_forever):
+        return (
+            "✅ Режим <b>«Удача»</b> уже активен <b>без срока окончания</b>.\n"
+            "<i>Ниже можно оформить ещё тариф — время прибавится к сроку.</i>\n\n"
+        )
+    if luck_expires_at:
+        when = format_luck_expires_human_ru(luck_expires_at)
+        return (
+            f"✅ <b>«Удача»</b> активирована до <b>{html_escape(when)}</b>.\n"
+            "<i>Новый тариф продлит срок после оплаты.</i>\n\n"
+        )
+    return "✅ Режим <b>«Удача»</b> активен.\n\n"
+
+
 def luck_shop_intro_html() -> str:
     return (
         "<b>🍀 Режим «Удача»</b>\n\n"
@@ -106,6 +146,7 @@ def luck_tariff_payment_html(
     payment_hint: str,
     platega_auto_note: bool = False,
     online_pay_line: bool = False,
+    status_banner: str = "",
 ) -> str:
     period = (
         "без срока (навсегда)"
@@ -123,6 +164,7 @@ def luck_tariff_payment_html(
         pay_line = "\n\n<b>Онлайн-оплата:</b> нажмите кнопку <b>«Оплатить»</b> ниже."
     return (
         f"<b>🍀 Оплата «Удача»</b>\n\n"
+        f"{status_banner}"
         f"Тариф: <b>{html_escape(t.title_ru)}</b>\n"
         f"Срок: {period}\n"
         f"К оплате: <b>{t.price_rub} ₽</b>{pay_line}\n\n"
