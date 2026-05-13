@@ -50,8 +50,7 @@ from checker import (
 from channel_gate_aiogram import AiogramChannelGateMiddleware
 from config import Settings, load_settings
 from db import Database, SAVED_USERNAMES_LIMIT
-from pending_referral import clear_pending_referrer, take_pending_referrer
-from referral_start import parse_referrer_id_from_start_payload
+from referral_start import referrer_id_from_command
 from admin_panel import (
     admin_clear_session,
     admin_handle_callback,
@@ -3255,12 +3254,11 @@ async def start_entry(
 ) -> None:
     assert message.from_user
     uid = message.from_user.id
-    payload = (command.args or "").strip()
-    ref_uid = parse_referrer_id_from_start_payload(payload)
+    ref_uid = referrer_id_from_command(command, message.text)
     if ref_uid is None:
-        ref_uid = take_pending_referrer(uid)
+        ref_uid = db.take_pending_referrer(uid)
     else:
-        clear_pending_referrer(uid)
+        db.clear_pending_referrer(uid)
     existed = db.user_exists(uid)
     db.get_or_create_user(uid)
     if not existed and ref_uid is not None:
@@ -3269,6 +3267,11 @@ async def start_entry(
             referrer_user_id=ref_uid,
             bonus_hours=settings.referral_plus_hours,
         ):
+            log.info(
+                "Реферал зарегистрирован: приглашённый=%s пригласивший=%s",
+                uid,
+                ref_uid,
+            )
             try:
                 await message.bot.send_message(
                     ref_uid,

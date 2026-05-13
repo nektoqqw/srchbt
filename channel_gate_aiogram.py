@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from aiogram import BaseMiddleware
@@ -9,8 +10,9 @@ from aiogram.enums import ChatMemberStatus, ChatType
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message, TelegramObject
 
 from channel_gate import SUB_CHECK_CALLBACK, subscription_prompt_html
-from pending_referral import stash_pending_referrer, take_pending_referrer
-from referral_start import referrer_id_from_start_message_text
+from referral_start import referrer_id_for_start
+
+_log = logging.getLogger(__name__)
 
 
 def aiogram_subscribe_markup(channel_username: str) -> InlineKeyboardMarkup:
@@ -112,10 +114,13 @@ class AiogramChannelGateMiddleware(BaseMiddleware):
             ok_msg, gate_err_msg = await aiogram_get_channel_membership(bot, ch, user.id)
             if ok_msg:
                 return await handler(event, data)
-            if event.chat.type == ChatType.PRIVATE:
-                rid = referrer_id_from_start_message_text(event.text)
+            db = data.get("db")
+            if event.chat.type == ChatType.PRIVATE and db is not None:
+                rid = referrer_id_for_start(
+                    command_args=None, message_text=event.text
+                )
                 if rid is not None:
-                    stash_pending_referrer(user.id, rid)
+                    db.stash_pending_referrer(user.id, rid)
             await event.answer(
                 subscription_prompt_html(ch)
                 + (
@@ -142,7 +147,7 @@ class AiogramChannelGateMiddleware(BaseMiddleware):
                     db = data.get("db")
                     uid = user.id
                     if db is not None:
-                        ref_uid = take_pending_referrer(uid)
+                        ref_uid = db.take_pending_referrer(uid)
                         existed = db.user_exists(uid)
                         db.get_or_create_user(uid)
                         if ref_uid is not None and not existed and db.try_register_referral(
@@ -150,6 +155,11 @@ class AiogramChannelGateMiddleware(BaseMiddleware):
                             referrer_user_id=ref_uid,
                             bonus_hours=settings.referral_plus_hours,
                         ):
+                            _log.info(
+                                "Реферал после подписки на канал: приглашённый=%s пригласивший=%s",
+                                uid,
+                                ref_uid,
+                            )
                             try:
                                 await bot.send_message(
                                     ref_uid,

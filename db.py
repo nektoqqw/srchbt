@@ -206,6 +206,15 @@ def init_db(db_path: Path) -> None:
             "CREATE INDEX IF NOT EXISTS idx_referrals_referrer "
             "ON referrals(referrer_user_id)"
         )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS pending_referrer (
+                user_id INTEGER PRIMARY KEY NOT NULL,
+                referrer_user_id INTEGER NOT NULL,
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+            """
+        )
 
         conn.commit()
 
@@ -286,6 +295,39 @@ class Database:
             )
             return int(cur.fetchone()[0])
 
+    def stash_pending_referrer(self, user_id: int, referrer_user_id: int) -> None:
+        """Сохранить ref_, если /start перехвачен (например гейтом канала) до обработчика."""
+        if user_id <= 0 or referrer_user_id <= 0 or user_id == referrer_user_id:
+            return
+        with self._cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO pending_referrer (user_id, referrer_user_id, updated_at)
+                VALUES (?, ?, datetime('now'))
+                ON CONFLICT(user_id) DO UPDATE SET
+                    referrer_user_id = excluded.referrer_user_id,
+                    updated_at = excluded.updated_at
+                """,
+                (user_id, referrer_user_id),
+            )
+
+    def take_pending_referrer(self, user_id: int) -> int | None:
+        with self._cursor() as cur:
+            cur.execute(
+                "SELECT referrer_user_id FROM pending_referrer WHERE user_id = ?",
+                (user_id,),
+            )
+            row = cur.fetchone()
+            if row is None:
+                return None
+            rid = int(row["referrer_user_id"])
+            cur.execute("DELETE FROM pending_referrer WHERE user_id = ?", (user_id,))
+            return rid
+
+    def clear_pending_referrer(self, user_id: int) -> None:
+        with self._cursor() as cur:
+            cur.execute("DELETE FROM pending_referrer WHERE user_id = ?", (user_id,))
+
     def try_register_referral(
         self,
         referred_user_id: int,
@@ -303,8 +345,7 @@ class Database:
             return False
         if bonus_hours <= 0:
             return False
-        if not self.user_exists(referrer_user_id):
-            return False
+        self.get_or_create_user(referrer_user_id)
         self.get_or_create_user(referred_user_id)
         try:
             with self._cursor() as cur:
