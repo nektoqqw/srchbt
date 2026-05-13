@@ -14,6 +14,23 @@ from username_cv import random_cv_username
 
 log = logging.getLogger(__name__)
 
+# Переиспользование TCP-соединений к fragment.com (быстрее серия GET подряд).
+_FRAGMENT_HTTP: requests.Session | None = None
+
+
+def _fragment_http() -> requests.Session:
+    global _FRAGMENT_HTTP
+    if _FRAGMENT_HTTP is None:
+        s = requests.Session()
+        s.headers.update(
+            {
+                "User-Agent": "Mozilla/5.0 (compatible; FragmentUsernameBot/0.2)",
+                "Accept-Language": "en-US,en;q=0.9,ru;q=0.8",
+            }
+        )
+        _FRAGMENT_HTTP = s
+    return _FRAGMENT_HTTP
+
 
 def random_letters_username_length(length: int) -> str:
     """Случайный ник a–z: чередование согласная–гласная, с первой — согласная."""
@@ -36,12 +53,8 @@ def username_listed_on_fragment(
         return True
 
     url = f"https://fragment.com/username/{username}"
-    headers = {
-        "User-Agent": "Mozilla/5.0 (compatible; FragmentUsernameBot/0.2)",
-        "Accept-Language": "en-US,en;q=0.9,ru;q=0.8",
-    }
     try:
-        resp = requests.get(url, headers=headers, timeout=timeout_s)
+        resp = _fragment_http().get(url, timeout=timeout_s)
         resp.raise_for_status()
     except requests.RequestException as e:
         log.warning("Fragment запрос для %s: %s", username, e)

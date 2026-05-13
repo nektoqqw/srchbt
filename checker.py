@@ -132,18 +132,29 @@ class UsernameChecker:
             return False
         await self.start()
         async with self._lock:
-            await asyncio.sleep(self._delay)
             try:
                 result = await self._client(CheckUsernameRequest(username=username))
             except FloodWaitError as e:
                 log.warning("FloodWait %s с — ждём", e.seconds)
                 await asyncio.sleep(int(e.seconds) + 1)
-                result = await self._client(CheckUsernameRequest(username=username))
+                try:
+                    result = await self._client(CheckUsernameRequest(username=username))
+                except RPCError as e2:
+                    log.warning("RPC при повторе %s: %s", username, e2)
+                    if self._delay > 0:
+                        await asyncio.sleep(self._delay)
+                    return False
             except RPCError as e:
                 log.warning("RPC при проверке %s: %s", username, e)
+                if self._delay > 0:
+                    await asyncio.sleep(self._delay)
                 return False
 
-        return _interpret_check_username_result(result)
+            out = _interpret_check_username_result(result)
+            # Пауза после запроса (а не до): первая проверка в цикле быстрее, лимиты Telegram соблюдаем.
+            if self._delay > 0:
+                await asyncio.sleep(self._delay)
+            return out
 
 
 class DisabledUsernameChecker:

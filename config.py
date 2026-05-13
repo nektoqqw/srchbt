@@ -60,12 +60,12 @@ class Settings:
     # fragment — только BOT_TOKEN + проверка ников через fragment.com (без Telethon)
     # telethon — проверка через MTProto (нужны TELEGRAM_API_ID / TELEGRAM_API_HASH)
     bot_mode: str = "fragment"
-    # пауза между HTTP-запросами к Fragment (сек.), чтобы реже ловить лимиты
-    fragment_request_delay_s: float = 0.12
+    # пауза между HTTP-запросами к Fragment (сек.); 0 = без паузы (риск лимитов у Fragment)
+    fragment_request_delay_s: float = 0.07
     # таймаут HTTP к Fragment на один запрос подбора (сек.)
     fragment_roll_timeout_s: int = 12
-    # пауза между account.checkUsername в Telethon (сек.); меньше — быстрее, выше риск FloodWait
-    telethon_check_delay_s: float = 0.14
+    # пауза после account.checkUsername в Telethon (сек.); меньше — быстрее, выше риск FloodWait
+    telethon_check_delay_s: float = 0.10
     # HTML-фрагмент: реквизиты / как оплатить PLUS (подставляется под выбранный тариф)
     plus_payment_hint: str = ""
     # HTML-фрагмент: оплата режима «Удача» (отдельно от PLUS)
@@ -151,9 +151,9 @@ def load_settings() -> Settings:
         username_check_mode = "disabled"
 
     try:
-        fragment_delay = float((os.environ.get("FRAGMENT_REQUEST_DELAY_S") or "0.12").strip())
+        fragment_delay = float((os.environ.get("FRAGMENT_REQUEST_DELAY_S") or "0.07").strip())
     except ValueError:
-        fragment_delay = 0.12
+        fragment_delay = 0.07
     fragment_delay = max(0.0, fragment_delay)
 
     try:
@@ -166,11 +166,11 @@ def load_settings() -> Settings:
 
     try:
         telethon_check_delay_s = float(
-            (os.environ.get("TELETHON_CHECK_DELAY_S") or "0.14").strip()
+            (os.environ.get("TELETHON_CHECK_DELAY_S") or "0.10").strip()
         )
     except ValueError:
-        telethon_check_delay_s = 0.14
-    telethon_check_delay_s = max(0.05, min(2.5, telethon_check_delay_s))
+        telethon_check_delay_s = 0.10
+    telethon_check_delay_s = max(0.04, min(2.5, telethon_check_delay_s))
 
     try:
         luck_promo_max_uses = int((os.environ.get("LUCK_PROMO_MAX_USES") or "0").strip())

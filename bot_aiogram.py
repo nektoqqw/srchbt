@@ -1539,12 +1539,13 @@ async def _find_one_username_fragment(
     import time
 
     lucky_effective = bool(lucky) and not filters.active()
-    retry_sleep = min(delay_s, 0.06) if delay_s > 0 else 0.0
+    retry_sleep = min(delay_s, 0.04) if delay_s > 0 else 0.0
 
     seen: set[str] = set()
     attempts = 0
     last_edit = 0.0
     deadline = time.monotonic() + float(FRAGMENT_USERNAME_SEARCH_WALL_S)
+    uses_th = getattr(checker, "uses_telethon", False)
     while attempts < max_attempts:
         if time.monotonic() >= deadline:
             return None, attempts, True
@@ -1561,7 +1562,7 @@ async def _find_one_username_fragment(
         attempts += 1
 
         now = time.monotonic()
-        if attempts == 1 or now - last_edit >= 0.1:
+        if attempts == 1 or now - last_edit >= 0.22:
             last_edit = now
             try:
                 await bot.edit_message_text(
@@ -1584,15 +1585,14 @@ async def _find_one_username_fragment(
             listed = True
 
         if not listed:
-            if getattr(checker, "uses_telethon", False):
+            if uses_th:
                 try:
                     avail = await checker.is_available(cand)
                 except Exception:
                     log.exception("telethon check %s", cand)
                     avail = False
                 if avail is not True:
-                    if retry_sleep > 0:
-                        await asyncio.sleep(retry_sleep)
+                    # Пауза уже внутри checker.is_available после RPC — не дублируем.
                     continue
             return cand, attempts, False
 
