@@ -25,7 +25,10 @@ def aiogram_subscribe_markup(channel_username: str) -> InlineKeyboardMarkup:
     )
 
 
-async def aiogram_user_is_channel_member(bot: Any, channel_username: str, user_id: int) -> bool:
+async def aiogram_get_channel_membership(
+    bot: Any, channel_username: str, user_id: int
+) -> tuple[bool, str | None]:
+    """(подписан?, ключ_ошибки). Ключ: bot_cannot_check — бот не админ канала и не видит участников."""
     import logging
 
     from aiogram.exceptions import TelegramBadRequest
@@ -33,20 +36,37 @@ async def aiogram_user_is_channel_member(bot: Any, channel_username: str, user_i
     log = logging.getLogger(__name__)
     ch = channel_username.strip().lstrip("@")
     if not ch:
-        return True
+        return True, None
     try:
         m = await bot.get_chat_member(chat_id=f"@{ch}", user_id=user_id)
-        return m.status in (
+        ok = m.status in (
             ChatMemberStatus.MEMBER,
             ChatMemberStatus.ADMINISTRATOR,
             ChatMemberStatus.CREATOR,
         )
+        return ok, None
     except TelegramBadRequest as e:
+        raw = str(e).lower()
         log.warning("get_chat_member @%s user=%s: %s", ch, user_id, e)
-        return False
+        if any(
+            x in raw
+            for x in (
+                "not enough rights",
+                "chat_admin_required",
+                "participant list is inaccessible",
+                "need administrator",
+            )
+        ):
+            return False, "bot_cannot_check"
+        return False, None
     except Exception:
         log.exception("get_chat_member @%s user=%s", ch, user_id)
-        return False
+        return False, None
+
+
+async def aiogram_user_is_channel_member(bot: Any, channel_username: str, user_id: int) -> bool:
+    ok, _ = await aiogram_get_channel_membership(bot, channel_username, user_id)
+    return ok
 
 
 def _aiogram_main_reply_keyboard(uid: int, settings: Any):
@@ -73,15 +93,31 @@ class AiogramChannelGateMiddleware(BaseMiddleware):
         if not ch:
             return await handler(event, data)
 
-        bot = data["bot"]
+        bot = data.get("bot")
+        if bot is None and isinstance(event, (Message, CallbackQuery)):
+            bot = event.bot
+        if bot is None:
+            import logging
+
+            logging.getLogger(__name__).error(
+                "AiogramChannelGateMiddleware: нет экземпляра Bot в data/event — проверка канала пропущена."
+            )
+            return await handler(event, data)
         if isinstance(event, Message):
             user = event.from_user
             if not user or user.id in settings.admin_ids:
                 return await handler(event, data)
-            if await aiogram_user_is_channel_member(bot, ch, user.id):
+            ok_msg, gate_err_msg = await aiogram_get_channel_membership(bot, ch, user.id)
+            if ok_msg:
                 return await handler(event, data)
             await event.answer(
-                subscription_prompt_html(ch),
+                subscription_prompt_html(ch)
+                + (
+                    "\n\n<i>Если вы уже в канале, а кнопка «Проверить» не помогает — "
+                    "бот должен быть администратором канала (напишите владельцу).</i>"
+                    if gate_err_msg == "bot_cannot_check"
+                    else ""
+                ),
                 reply_markup=aiogram_subscribe_markup(ch),
                 parse_mode="HTML",
             )
@@ -93,7 +129,7 @@ class AiogramChannelGateMiddleware(BaseMiddleware):
                 return await handler(event, data)
             data_cb = event.data or ""
             if data_cb == SUB_CHECK_CALLBACK:
-                ok = await aiogram_user_is_channel_member(bot, ch, user.id)
+                ok, gate_err = await aiogram_get_channel_membership(bot, ch, user.id)
                 if ok:
                     await event.answer("✅ Подписка подтверждена!")
                     assert event.message
@@ -102,18 +138,30 @@ class AiogramChannelGateMiddleware(BaseMiddleware):
                         reply_markup=_aiogram_main_reply_keyboard(user.id, settings),
                         parse_mode="HTML",
                     )
+                elif gate_err == "bot_cannot_check":
+                    await event.answer(
+                        "Проверка подписки не настроена: добавьте бота администратором канала.",
+                        show_alert=True,
+                    )
                 else:
                     await event.answer(
                         "Сначала вступите в канал, затем нажмите снова.",
                         show_alert=True,
                     )
                 return None
-            if await aiogram_user_is_channel_member(bot, ch, user.id):
+            ok_member, gate_err_cb = await aiogram_get_channel_membership(bot, ch, user.id)
+            if ok_member:
                 return await handler(event, data)
-            await event.answer(
-                "Сначала подпишитесь на канал бота.",
-                show_alert=True,
-            )
+            if gate_err_cb == "bot_cannot_check":
+                await event.answer(
+                    "Проверка подписки не настроена: добавьте бота администратором канала.",
+                    show_alert=True,
+                )
+            else:
+                await event.answer(
+                    "Сначала подпишитесь на канал бота.",
+                    show_alert=True,
+                )
             return None
 
         return await handler(event, data)

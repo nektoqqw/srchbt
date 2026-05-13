@@ -1472,10 +1472,11 @@ def create_bot(settings: Settings) -> Bot:
 
 # ---------- Middleware ----------
 class DependenciesMiddleware(BaseMiddleware):
-    def __init__(self, *, db: Database, settings: Settings, checker: Any) -> None:
+    def __init__(self, *, db: Database, settings: Settings, checker: Any, bot: Bot) -> None:
         self.db = db
         self.settings = settings
         self.checker = checker
+        self.bot = bot
 
     async def __call__(
         self,
@@ -1486,6 +1487,7 @@ class DependenciesMiddleware(BaseMiddleware):
         data["db"] = self.db
         data["settings"] = self.settings
         data["checker"] = self.checker
+        data["bot"] = self.bot
         return await handler(event, data)
 
 
@@ -3366,7 +3368,7 @@ async def aiogram_main() -> None:
     bot = create_bot(settings)
     dp = Dispatcher()
     dp.update.middleware(
-        DependenciesMiddleware(db=db, settings=settings, checker=checker)
+        DependenciesMiddleware(db=db, settings=settings, checker=checker, bot=bot)
     )
     dp.message.middleware(AiogramChannelGateMiddleware())
     dp.callback_query.middleware(AiogramChannelGateMiddleware())
