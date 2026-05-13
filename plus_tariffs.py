@@ -70,9 +70,19 @@ def plus_shop_intro_html() -> str:
     )
 
 
-def kb_plus_payment_nav() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
+def kb_plus_payment_nav(*, pay_url: str | None = None) -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = []
+    if pay_url and pay_url.strip().startswith("http"):
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text="Оплатить",
+                    url=pay_url.strip(),
+                )
+            ]
+        )
+    rows.extend(
+        [
             [
                 InlineKeyboardButton(
                     text="◀ Все тарифы",
@@ -87,18 +97,34 @@ def kb_plus_payment_nav() -> InlineKeyboardMarkup:
             ],
         ]
     )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def plus_tariff_payment_html(t: PlusTariff, *, payment_hint: str) -> str:
+def plus_tariff_payment_html(
+    t: PlusTariff,
+    *,
+    payment_hint: str,
+    platega_auto_note: bool = False,
+    online_pay_line: bool = False,
+) -> str:
     period = (
         "без срока (навсегда)"
         if t.days is None
         else f"<b>{t.days}</b> календарных дней"
     )
+    auto = ""
+    if platega_auto_note:
+        auto = (
+            "\n\n<i>После успешной оплаты PLUS включится автоматически "
+            "(обычно в течение минуты).</i>"
+        )
+    pay_line = ""
+    if online_pay_line:
+        pay_line = "\n\n<b>Онлайн-оплата:</b> нажмите кнопку <b>«Оплатить»</b> ниже."
     return (
         f"<b>♠️ Оплата PLUS</b>\n\n"
         f"Тариф: <b>{html_escape(t.title_ru)}</b>\n"
         f"Срок: {period}\n"
-        f"К оплате: <b>{t.price_rub} ₽</b>\n\n"
-        f"{payment_hint}"
+        f"К оплате: <b>{t.price_rub} ₽</b>{pay_line}\n\n"
+        f"{payment_hint}{auto}"
     )

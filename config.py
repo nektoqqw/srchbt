@@ -78,6 +78,14 @@ class Settings:
     bot_username_for_links: str = ""
     # без @; пусто — не требовать канал. Бот должен быть админом канала, иначе getChatMember не сработает.
     required_channel_username: str = "amnyam_search"
+    # Platega.io: если заданы MERCHANT_ID и SECRET — при выборе тарифа создаётся платёж и кнопка «Оплатить»
+    platega_merchant_id: str = ""
+    platega_secret: str = ""
+    platega_api_base: str = "https://app.platega.io"
+    platega_payment_method: int = 2
+    # полные URL после оплаты (если пусто — подставляется https://t.me/<бот>?start=platega_ok)
+    platega_return_url: str = ""
+    platega_failed_url: str = ""
 
 
 def load_settings() -> Settings:
@@ -207,6 +215,18 @@ def load_settings() -> Settings:
     else:
         luck_payment_hint = luck_hint_raw.replace("\\n", "\n")
 
+    platega_merchant_id = (os.environ.get("PLATEGA_MERCHANT_ID") or "").strip()
+    platega_secret = (os.environ.get("PLATEGA_SECRET") or "").strip()
+    platega_api_base = (os.environ.get("PLATEGA_API_BASE") or "https://app.platega.io").strip().rstrip("/")
+    if not platega_api_base.startswith("http"):
+        platega_api_base = "https://app.platega.io"
+    try:
+        platega_payment_method = int((os.environ.get("PLATEGA_PAYMENT_METHOD") or "2").strip())
+    except ValueError:
+        platega_payment_method = 2
+    platega_return_url = (os.environ.get("PLATEGA_RETURN_URL") or "").strip()
+    platega_failed_url = (os.environ.get("PLATEGA_FAILED_URL") or "").strip()
+
     return Settings(
         bot_token=token,
         api_id=api_id_int,
@@ -232,4 +252,10 @@ def load_settings() -> Settings:
         referral_plus_hours=referral_plus_hours,
         bot_username_for_links=bot_username_for_links,
         required_channel_username=required_channel_username,
+        platega_merchant_id=platega_merchant_id,
+        platega_secret=platega_secret,
+        platega_api_base=platega_api_base,
+        platega_payment_method=platega_payment_method,
+        platega_return_url=platega_return_url,
+        platega_failed_url=platega_failed_url,
     )

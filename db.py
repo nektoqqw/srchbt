@@ -229,6 +229,27 @@ def init_db(db_path: Path) -> None:
             """
         )
 
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS platega_orders (
+                transaction_id TEXT PRIMARY KEY NOT NULL,
+                user_id INTEGER NOT NULL,
+                product_kind TEXT NOT NULL,
+                tariff_key TEXT NOT NULL,
+                amount_rub REAL NOT NULL,
+                currency TEXT NOT NULL DEFAULT 'RUB',
+                status TEXT NOT NULL DEFAULT 'PENDING',
+                pay_url TEXT,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_platega_orders_user "
+            "ON platega_orders(user_id)"
+        )
+
         conn.commit()
 
 
@@ -1074,3 +1095,102 @@ class Database:
             )
             rows = cur.fetchall()
             return [(r[0], r[1], float(r[2])) for r in rows]
+
+    # ---- Platega (оплата тарифов) ----
+
+    def platega_insert_pending(
+        self,
+        *,
+        transaction_id: str,
+        user_id: int,
+        product_kind: str,
+        tariff_key: str,
+        amount_rub: float,
+        currency: str,
+        pay_url: str,
+    ) -> None:
+        tid = transaction_id.strip()
+        if not tid:
+            return
+        with self._cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO platega_orders (
+                    transaction_id, user_id, product_kind, tariff_key,
+                    amount_rub, currency, status, pay_url,
+                    created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, 'PENDING', ?, datetime('now'), datetime('now'))
+                """,
+                (
+                    tid,
+                    user_id,
+                    product_kind.strip().lower(),
+                    tariff_key.strip().lower(),
+                    float(amount_rub),
+                    (currency or "RUB").upper(),
+                    pay_url.strip(),
+                ),
+            )
+
+    def platega_try_confirm(
+        self,
+        transaction_id: str,
+        paid_amount: float | None,
+    ) -> tuple[int, str, str] | None:
+        """
+        Если заказ PENDING и сумма совпадает — помечает CONFIRMED.
+        Возвращает (user_id, product_kind, tariff_key) для начисления или None.
+        """
+        tid = transaction_id.strip()
+        if not tid:
+            return None
+        with self._cursor() as cur:
+            cur.execute(
+                "SELECT status, amount_rub FROM platega_orders WHERE transaction_id = ?",
+                (tid,),
+            )
+            row = cur.fetchone()
+            if not row:
+                return None
+            if str(row["status"]).upper() == "CONFIRMED":
+                return None
+            if str(row["status"]).upper() != "PENDING":
+                return None
+            if paid_amount is not None:
+                if abs(float(row["amount_rub"]) - float(paid_amount)) > 0.02:
+                    return None
+            cur.execute(
+                """
+                UPDATE platega_orders
+                SET status = 'CONFIRMED', updated_at = datetime('now')
+                WHERE transaction_id = ? AND status = 'PENDING'
+                """,
+                (tid,),
+            )
+            if cur.rowcount == 0:
+                return None
+            cur.execute(
+                """
+                SELECT user_id, product_kind, tariff_key
+                FROM platega_orders WHERE transaction_id = ?
+                """,
+                (tid,),
+            )
+            r2 = cur.fetchone()
+            if not r2:
+                return None
+            return (int(r2["user_id"]), str(r2["product_kind"]), str(r2["tariff_key"]))
+
+    def platega_mark_canceled(self, transaction_id: str) -> None:
+        tid = transaction_id.strip()
+        if not tid:
+            return
+        with self._cursor() as cur:
+            cur.execute(
+                """
+                UPDATE platega_orders
+                SET status = 'CANCELED', updated_at = datetime('now')
+                WHERE transaction_id = ? AND status = 'PENDING'
+                """,
+                (tid,),
+            )

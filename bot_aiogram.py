@@ -66,20 +66,20 @@ from fragment_scraper import (
     username_listed_on_fragment,
 )
 from luck_tariffs import (
-    kb_luck_payment_nav,
     kb_luck_tariffs,
     luck_shop_intro_html,
     luck_tariff_by_key,
-    luck_tariff_payment_html,
 )
 from luck_username import luck_score
+from platega_checkout import (
+    show_luck_tariff_payment_screen,
+    show_plus_tariff_payment_screen,
+)
 from plus_tariffs import (
     PLUS_TARIFFS,
-    kb_plus_payment_nav,
     kb_plus_tariffs,
     plus_shop_intro_html,
     plus_tariff_by_key,
-    plus_tariff_payment_html,
 )
 from roll_filters import (
     RollFilters,
@@ -1950,11 +1950,7 @@ async def on_callback_frag(
                 parse_mode="HTML",
             )
             return
-        await cb.message.edit_text(
-            plus_tariff_payment_html(t, payment_hint=settings.plus_payment_hint),
-            parse_mode="HTML",
-            reply_markup=kb_plus_payment_nav(),
-        )
+        await show_plus_tariff_payment_screen(cb, db, settings, uid, t)
         return
 
     if data == "plus:shop":
@@ -2024,13 +2020,7 @@ async def on_callback_frag(
                 parse_mode="HTML",
             )
             return
-        await cb.message.edit_text(
-            luck_tariff_payment_html(
-                t_luck, payment_hint=settings.luck_payment_hint
-            ),
-            parse_mode="HTML",
-            reply_markup=kb_luck_payment_nav(),
-        )
+        await show_luck_tariff_payment_screen(cb, db, settings, uid, t_luck)
         return
 
     if data == "cab:back_frag":
@@ -2992,11 +2982,7 @@ async def on_callback_v2(cb: CallbackQuery, db: Database, settings: Settings, ch
                 parse_mode="HTML",
             )
             return
-        await cb.message.edit_text(
-            plus_tariff_payment_html(t, payment_hint=settings.plus_payment_hint),
-            parse_mode="HTML",
-            reply_markup=kb_plus_payment_nav(),
-        )
+        await show_plus_tariff_payment_screen(cb, db, settings, uid, t)
         return
 
     if data == "plus:shop":
@@ -3066,13 +3052,7 @@ async def on_callback_v2(cb: CallbackQuery, db: Database, settings: Settings, ch
                 parse_mode="HTML",
             )
             return
-        await cb.message.edit_text(
-            luck_tariff_payment_html(
-                t, payment_hint=settings.luck_payment_hint
-            ),
-            parse_mode="HTML",
-            reply_markup=kb_luck_payment_nav(),
-        )
+        await show_luck_tariff_payment_screen(cb, db, settings, uid, t)
         return
 
     if data.startswith("val:go:"):
