@@ -189,8 +189,7 @@ def evaluate_username_market(
 
     if exact_sales_count == 0:
         if rarity_info.min_usd < 50:
-            cons.append("Нет в вашей базе импорта — спрос на Fragment не подтверждён")
-            cons.append("Нет зафиксированных продаж этого @ника в локальной базе")
+            cons.append("По этому имени в боте мало данных — ориентир по цене слабее")
     else:
         pros.append(f"В базе зафиксировано продаж по этому @нику: {exact_sales_count}")
 

@@ -55,7 +55,7 @@ def predict_price_usd(username: str, db: Database) -> tuple[float | None, str]:
     all_items = db.iter_fragment_items(limit=5000)
     candidates = [it for it in all_items if it.price_usd is not None]
     if not candidates:
-        return None, "нет импортированных данных с Fragment (сначала импорт через бота)"
+        return None, "похожих лотов в базе пока нет — ориентир по цене слабый, проверьте ник в Telegram"
 
     # фильтруем по длине, чтобы прогноз был осмысленным
     same_len = [it for it in candidates if len(it.username) == len(uname)]
@@ -80,7 +80,7 @@ def predict_price_usd(username: str, db: Database) -> tuple[float | None, str]:
         if med is not None:
             return med, f"оценка по длине линии ({len(uname)} симв.), медиана ${med:,.0f}"
 
-    return None, "мало данных для прогноза — импортируй больше лотов с Fragment"
+    return None, "мало похожих примеров — оценка очень условная"
 
 
 def rarity_tier_for_username(username: str, db: Database) -> tuple[RarityInfo, float | None, str]:

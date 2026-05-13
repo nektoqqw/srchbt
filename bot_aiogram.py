@@ -228,8 +228,7 @@ def _ui_frag_found(
             + "\n\n"
         )
     body += (
-        "<i>Похоже, лот не занят по данным витрины. Перед сменой @username загляните в профиль вручную — "
-        "так спокойнее.</i>"
+        "<i>По витрине активного лота нет. Перед сменой ника гляньте в профиль Telegram.</i>"
     )
     return body
 
@@ -1331,10 +1330,10 @@ async def perform_appraisals_batch(
         frag_line = None
         if t in listed_map and listed_map[t] is not None:
             frag_line = (
-                "<b>Страница Fragment:</b> ник сейчас выглядит как <b>лот / занятость</b>."
+                "<b>Fragment:</b> на витрине виден как <b>лот</b>."
                 if listed_map[t]
-                else "<b>Страница Fragment:</b> по шаблону страницы <b>нет активного лота</b> "
-                "(это не гарантирует свободу в Telegram)."
+                else "<b>Fragment:</b> активного лота не видно. "
+                "<i>При сомнении проверьте ник в приложении.</i>"
             )
         tg_line = telegram_map.get(t)
         title = (
@@ -3106,10 +3105,10 @@ async def on_callback_v2(cb: CallbackQuery, db: Database, settings: Settings, ch
         frag_line = None
         if uname in listed_map2 and listed_map2[uname] is not None:
             frag_line = (
-                "<b>Страница Fragment:</b> ник сейчас выглядит как <b>лот / занятость</b>."
+                "<b>Fragment:</b> на витрине виден как <b>лот</b>."
                 if listed_map2[uname]
-                else "<b>Страница Fragment:</b> по шаблону страницы <b>нет активного лота</b> "
-                "(это не гарантирует свободу в Telegram)."
+                else "<b>Fragment:</b> активного лота не видно. "
+                "<i>При сомнении проверьте ник в приложении.</i>"
             )
         title = f"<b>Оценка</b> {_format_username(rep.username)}"
         body = _valuation_block_html(
