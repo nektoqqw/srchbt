@@ -55,7 +55,7 @@ def predict_price_usd(username: str, db: Database) -> tuple[float | None, str]:
     all_items = db.iter_fragment_items(limit=5000)
     candidates = [it for it in all_items if it.price_usd is not None]
     if not candidates:
-        return None, "похожих лотов в базе пока нет — ориентир по цене слабый, проверьте ник в Telegram"
+        return None, "мало данных для ориентира по цене"
 
     # фильтруем по длине, чтобы прогноз был осмысленным
     same_len = [it for it in candidates if len(it.username) == len(uname)]

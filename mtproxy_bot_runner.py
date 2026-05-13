@@ -242,11 +242,10 @@ async def _perform_roll(
     else:
         lines = [f"Найдено свободных: <b>{len(found)}</b>", ""]
     buttons: list[list[Button]] = []
-    for uname, predicted_price, rarity_name, why in found:
+    for uname, predicted_price, rarity_name, _why in found:
         usd_txt = "?" if predicted_price is None else f"${predicted_price:,.0f}"
         lines.append(f"• @{uname.lower()}")
         lines.append(f"  Оценка: <b>{usd_txt}</b> | Редкость: <b>{html.escape(rarity_name)}</b>")
-        lines.append(f"  Причина: {html.escape(why)}")
         lines.append("")
         if is_plus:
             ul = uname.lower()

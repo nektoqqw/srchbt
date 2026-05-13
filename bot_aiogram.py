@@ -219,12 +219,13 @@ def _ui_frag_found(
         "<b>Есть совпадение</b>\n\n"
         f"<code>@{html.escape(n)}</code>\n\n"
     )
-    if rarity_name and why is not None:
+    if rarity_name is not None:
         body += (
             _rarity_metrics_html(
                 rarity_name=rarity_name,
                 predicted_price=predicted_price,
-                why=why,
+                why=why or "",
+                show_explanation=False,
             )
             + "\n\n"
         )
@@ -1081,15 +1082,18 @@ def _rarity_metrics_html(
     rarity_name: str,
     predicted_price: float | None,
     why: str,
+    show_explanation: bool = True,
 ) -> str:
     """Блок «редкость + ориентир цены + пояснение» без заголовка крутки."""
     usd_txt = "нет данных" if predicted_price is None else f"${predicted_price:,.0f}"
     g = _rarity_glyph(rarity_name)
-    return (
+    core = (
         f"{g} <b>Редкость:</b> <b>{html.escape(rarity_name)}</b>\n"
-        f"💵 <b>Ориентир цены:</b> <b>{usd_txt}</b>\n\n"
-        f"<i>{html.escape(why)}</i>"
+        f"💵 <b>Ориентир цены:</b> <b>{usd_txt}</b>"
     )
+    if not show_explanation or not (why or "").strip():
+        return core
+    return core + "\n\n" + f"<i>{html.escape(why)}</i>"
 
 
 def _roll_result_card_html(
@@ -1113,6 +1117,7 @@ def _roll_result_card_html(
             rarity_name=rarity_name,
             predicted_price=predicted_price,
             why=why,
+            show_explanation=False,
         )
         + tail
     )
