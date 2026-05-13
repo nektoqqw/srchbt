@@ -212,6 +212,7 @@ def _ui_frag_found(
     rarity_name: str | None = None,
     predicted_price: float | None = None,
     why: str | None = None,
+    luck_used: bool = False,
 ) -> str:
     n = name.lower()
     body = (
@@ -227,9 +228,13 @@ def _ui_frag_found(
             )
             + "\n\n"
         )
-    body += (
-        "<i>По витрине активного лота нет. Перед сменой ника гляньте в профиль Telegram.</i>"
+    foot: list[str] = []
+    if luck_used:
+        foot.append("<i>🍀 С учётом режима <b>«Удача»</b>.</i>")
+    foot.append(
+        "<i>Проверьте доступность юзернейма сами для большей достоверности.</i>"
     )
+    body += "\n".join(foot)
     return body
 
 
@@ -923,16 +928,12 @@ async def _frag_run_roll_at_length(
     tail = (
         ""
         if is_plus
-        else "\n\n<i><b>Подписка PLUS</b> — сохранить никнейм одной кнопкой.</i>"
+        else "\n\n<i>Сохранить в один тап — с подпиской PLUS.</i>"
     )
-    if lucky_spin and not flt.active():
+    if flt.active():
         tail += (
-            "\n\n<i>🍀 Учтён режим <b>«Удача»</b>: приоритет симметричных и удачных комбинаций.</i>"
-        )
-    elif flt.active():
-        tail += (
-            "\n\n<i>🎛 Применены <b>фильтры PLUS</b>: "
-            f"{html.escape(filters_summary_ru(flt))}.</i>"
+            "\n\n<i>🎛 Фильтры PLUS: "
+            f"{html.escape(filters_summary_ru(flt))}</i>"
         )
 
     await bot.edit_message_text(
@@ -943,6 +944,7 @@ async def _frag_run_roll_at_length(
             rarity_name=rarity_name,
             predicted_price=predicted_price,
             why=why_r,
+            luck_used=bool(lucky_spin and not flt.active()),
         )
         + tail,
         parse_mode="HTML",
