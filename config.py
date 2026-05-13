@@ -66,10 +66,6 @@ class Settings:
     fragment_roll_timeout_s: int = 12
     # пауза после account.checkUsername в Telethon (сек.); меньше — быстрее, выше риск FloodWait
     telethon_check_delay_s: float = 0.10
-    # HTML-фрагмент: реквизиты / как оплатить PLUS (подставляется под выбранный тариф)
-    plus_payment_hint: str = ""
-    # HTML-фрагмент: оплата режима «Удача» (отдельно от PLUS)
-    luck_payment_hint: str = ""
     # глобальный лимит активаций LUCK_PROMO_CODE (0 = без лимита)
     luck_promo_max_uses: int = 0
     # часы PLUS за одного нового пользователя, пришедшего по реф. ссылке
@@ -198,23 +194,6 @@ def load_settings() -> Settings:
         os.environ.get("REQUIRED_CHANNEL_USERNAME")
     )
 
-    plus_hint_raw = (os.environ.get("PLUS_PAYMENT_HINT") or "").strip()
-    if not plus_hint_raw:
-        plus_payment_hint = (
-            "<b>Оплата</b>: переведите указанную сумму и пришлите скрин чека в поддержку "
-            "(кнопка «Поддержка») с пометкой <code>PLUS</code> и вашим <code>user_id</code> "
-            "из раздела «Аккаунт» (если виден) или перешлите это сообщение.\n\n"
-            "<i>После проверки администратор включит подписку вручную.</i>"
-        )
-    else:
-        plus_payment_hint = plus_hint_raw.replace("\\n", "\n")
-
-    luck_hint_raw = (os.environ.get("LUCK_PAYMENT_HINT") or "").strip()
-    if not luck_hint_raw:
-        luck_payment_hint = plus_payment_hint
-    else:
-        luck_payment_hint = luck_hint_raw.replace("\\n", "\n")
-
     platega_merchant_id = (os.environ.get("PLATEGA_MERCHANT_ID") or "").strip()
     platega_secret = (os.environ.get("PLATEGA_SECRET") or "").strip()
     platega_api_base = (os.environ.get("PLATEGA_API_BASE") or "https://app.platega.io").strip().rstrip("/")
@@ -246,8 +225,6 @@ def load_settings() -> Settings:
         fragment_request_delay_s=fragment_delay,
         fragment_roll_timeout_s=fragment_roll_timeout_s,
         telethon_check_delay_s=telethon_check_delay_s,
-        plus_payment_hint=plus_payment_hint,
-        luck_payment_hint=luck_payment_hint,
         luck_promo_max_uses=luck_promo_max_uses,
         referral_plus_hours=referral_plus_hours,
         bot_username_for_links=bot_username_for_links,

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import sqlite3
+from urllib.parse import urlparse
 
 from aiogram.types import CallbackQuery
 
@@ -26,13 +27,17 @@ from plus_tariffs import (
 
 log = logging.getLogger(__name__)
 
+_PLATEGA_PAYMENT_HINT_OK = (
+    "<i>Оплата только онлайн (Platega): нажмите кнопку <b>«Оплатить»</b> ниже.</i>"
+)
+_PLATEGA_PAYMENT_HINT_NO_KEYS = (
+    "<i>Онлайн-оплата недоступна: владельцу бота нужно задать в <code>.env</code> "
+    "<code>PLATEGA_MERCHANT_ID</code> и <code>PLATEGA_SECRET</code>.</i>"
+)
+
 _PLATEGA_NO_BUTTON_HTML = (
-    "\n\n<i>Онлайн-кнопка «Оплатить» не появилась. Проверьте в <code>.env</code>: "
-    "<code>PLATEGA_MERCHANT_ID</code>, <code>PLATEGA_SECRET</code>, "
-    "<code>PLATEGA_API_BASE</code> (по умолчанию как в доке: <code>https://app.platega.io</code>). "
-    "Задайте <code>BOT_USERNAME_FOR_LINKS</code> или явные "
-    "<code>PLATEGA_RETURN_URL</code> и <code>PLATEGA_FAILED_URL</code>. "
-    "Смотрите логи процесса бота на ошибку от Platega.</i>"
+    "\n\n<i>Кнопка «Оплатить» не создана. Проверьте ключи и URL в <code>.env</code> "
+    "и логи бота (строки с <code>Platega</code>).</i>"
 )
 
 
@@ -44,24 +49,65 @@ async def _bot_username(settings: Settings, cb: CallbackQuery) -> str:
     return (me.username or "").strip()
 
 
+def _strip_url_env(raw: str | None) -> str:
+    """Убираем пробелы и типичные кавычки из .env."""
+    return (raw or "").strip().strip('"').strip("'")
+
+
+def _valid_absolute_http_url(url: str) -> bool:
+    """Platega требует валидный абсолютный URL (схема + хост)."""
+    s = (url or "").strip()
+    if len(s) < 12:
+        return False
+    try:
+        p = urlparse(s)
+    except ValueError:
+        return False
+    if p.scheme not in ("http", "https"):
+        return False
+    if not p.netloc:
+        return False
+    return "." in p.netloc or p.netloc == "localhost"
+
+
 async def _platega_return_urls(settings: Settings, cb: CallbackQuery) -> tuple[str, str]:
     """
-    URL после оплаты / отмены. Platega требует валидные URI; без @бота в Telegram
-    всё равно подставляем заглушку, чтобы запрос к API не блокировался.
+    URL после оплаты / отмены. Невалидные значения из .env отбрасываются,
+    иначе Platega отвечает 400 «URL is not a valid absolute URL».
     """
-    ret = (settings.platega_return_url or "").strip()
-    fail = (settings.platega_failed_url or "").strip()
-    if ret and fail:
-        return ret, fail
-    if ret and not fail:
-        return ret, ret
-    if fail and not ret:
-        return fail, fail
+    ret = _strip_url_env(settings.platega_return_url)
+    fail = _strip_url_env(settings.platega_failed_url)
+    if ret and not _valid_absolute_http_url(ret):
+        log.warning("PLATEGA_RETURN_URL не валиден (%r), подставляем запасной.", ret[:80])
+        ret = ""
+    if fail and not _valid_absolute_http_url(fail):
+        log.warning("PLATEGA_FAILED_URL не валиден (%r), подставляем запасной.", fail[:80])
+        fail = ""
+
     un = await _bot_username(settings, cb)
     if un:
-        base = f"https://t.me/{un}"
-        return ret or f"{base}?start=platega_ok", fail or f"{base}?start=platega_fail"
-    return ret or "https://telegram.org", fail or "https://telegram.org"
+        default_ok = f"https://t.me/{un}?start=platega_ok"
+        default_fail = f"https://t.me/{un}?start=platega_fail"
+    else:
+        default_ok = "https://telegram.org/"
+        default_fail = "https://telegram.org/"
+
+    if ret and fail:
+        out_ok, out_fail = ret, fail
+    elif ret:
+        out_ok, out_fail = ret, ret
+    elif fail:
+        out_ok, out_fail = fail, fail
+    else:
+        out_ok, out_fail = default_ok, default_fail
+
+    if not _valid_absolute_http_url(out_ok):
+        out_ok = default_ok
+    if not _valid_absolute_http_url(out_fail):
+        out_fail = default_fail
+
+    log.info("Platega redirect: return=%s failedUrl=%s", out_ok, out_fail)
+    return out_ok, out_fail
 
 
 def _normalize_pay_url(raw: object) -> str | None:
@@ -122,11 +168,11 @@ async def show_plus_tariff_payment_screen(
 ) -> None:
     pay_url: str | None = None
     platega_note = False
-    payment_hint = settings.plus_payment_hint
     pg_ok = platega_configured(
         merchant_id=settings.platega_merchant_id,
         secret=settings.platega_secret,
     )
+    payment_hint = _PLATEGA_PAYMENT_HINT_OK if pg_ok else _PLATEGA_PAYMENT_HINT_NO_KEYS
     if pg_ok:
         ret_url, fail_url = await _platega_return_urls(settings, cb)
         payload = f"tg:{uid}:plus:{t.key}"
@@ -204,11 +250,11 @@ async def show_luck_tariff_payment_screen(
 ) -> None:
     pay_url: str | None = None
     platega_note = False
-    payment_hint = settings.luck_payment_hint
     pg_ok = platega_configured(
         merchant_id=settings.platega_merchant_id,
         secret=settings.platega_secret,
     )
+    payment_hint = _PLATEGA_PAYMENT_HINT_OK if pg_ok else _PLATEGA_PAYMENT_HINT_NO_KEYS
     if pg_ok:
         ret_url, fail_url = await _platega_return_urls(settings, cb)
         payload = f"tg:{uid}:luck:{t.key}"
