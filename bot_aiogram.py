@@ -240,7 +240,7 @@ def _ui_frag_found(
 ) -> str:
     n = name.lower()
     body = (
-        "<b>Есть совпадение</b>\n\n"
+        f"🌟 <b>{html.escape(AMNYAM)}</b> подобрал для вас юзернейм…\n\n"
         f"<code>@{html.escape(n)}</code>\n\n"
     )
     if rarity_name is not None:
@@ -1134,7 +1134,7 @@ def _roll_result_card_html(
         else ""
     )
     return (
-        "<b>Вам выпало</b>\n"
+        f"🌟 <b>{html.escape(AMNYAM)}</b> подобрал для вас юзернейм…\n"
         f"{_format_username(uname)}\n"
         "<code>──────────</code>\n\n"
         + _rarity_metrics_html(
