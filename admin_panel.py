@@ -110,6 +110,8 @@ def admin_menu_html(db: Database, settings: Settings) -> str:
         f"{lock_line}\n"
         f"<b>Пользователей в базе:</b> <code>{users_n}</code> · "
         f"<b>с PLUS:</b> <code>{plus_n}</code>\n\n"
+        "<b>Промокоды:</b> отдельные кнопки <b>PLUS по дням</b>, <b>PLUS на часы</b> и "
+        "<b>Удача</b> (Удача — ввод <code>КОД ЛИМИТ</code> или <code>КОД ЛИМИТ ЧАСЫ</code>).\n\n"
         "<i>Создавайте промокоды, переключайте глобальный стоп-поиск, "
         "рассылайте объявления, правьте ссылки на документы. Доступ только у вас.</i>\n\n"
         "<code>──────── ● ────────</code>"
@@ -171,11 +173,19 @@ def kb_admin_root(db: Database) -> InlineKeyboardMarkup:
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="✨ Промокод PLUS",
+                    text="✨ PLUS по дням",
                     callback_data="adm:ppm",
                 ),
+            ],
+            [
                 InlineKeyboardButton(
-                    text="🍀 Промокод Удача",
+                    text="⏱ PLUS на часы",
+                    callback_data="adm:pph",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🍀 Удача",
                     callback_data="adm:pl",
                 ),
             ],
@@ -290,21 +300,13 @@ async def admin_handle_callback(
                 row = []
         if row:
             rows.append(row)
-        rows.append(
-            [
-                InlineKeyboardButton(
-                    text="⏱ PLUS на часы",
-                    callback_data="adm:pph",
-                )
-            ]
-        )
         rows.append([InlineKeyboardButton(text="« Пульт", callback_data="adm:home")])
         await cb.message.edit_text(
-            "<b>✨ Новый промокод PLUS</b>\n<code>────────</code>\n\n"
-            "Выберите <b>срок подписки</b> по дням (как в витрине) <b>или</b> кнопку "
-            "<b>«PLUS на часы»</b> для произвольного числа часов.\n\n"
-            "Дальше одним сообщением пришлёте <code>КОД ЛИМИТ</code> "
-            "(для тарифа по дням) или <code>КОД ЛИМИТ ЧАСЫ</code> (для часов).\n"
+            "<b>✨ Промокод PLUS по дням</b>\n<code>────────</code>\n\n"
+            "Выберите <b>срок</b> как в витрине тарифов.\n\n"
+            "<b>PLUS на часы</b> — отдельная кнопка на главном экране пульта "
+            "(<code>⏱ PLUS на часы</code>).\n\n"
+            "Дальше одним сообщением пришлёте <code>КОД ЛИМИТ</code>:\n"
             "• <b>КОД</b> — латиница и цифры, 3–40 символов\n"
             "• <b>ЛИМИТ</b> — сколько раз код сработает на разных людей "
             "(<code>0</code> = без лимита)\n\n"
