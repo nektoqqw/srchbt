@@ -13,7 +13,12 @@ from config import Settings
 from db import Database
 from luck_tariffs import LuckTariff, kb_luck_payment_nav, luck_tariff_payment_html
 from platega_api import create_platega_transaction, platega_configured
-from plus_tariffs import PlusTariff, kb_plus_payment_nav, plus_tariff_payment_html
+from plus_tariffs import (
+    PlusTariff,
+    kb_plus_payment_nav,
+    plus_subscriber_status_banner_html,
+    plus_tariff_payment_html,
+)
 
 log = logging.getLogger(__name__)
 
@@ -142,12 +147,18 @@ async def show_plus_tariff_payment_screen(
                         platega_note = True
             except Exception:
                 log.exception("Platega create_transaction PLUS uid=%s tariff=%s", uid, t.key)
+    urow = db.get_or_create_user(uid)
+    status_banner = plus_subscriber_status_banner_html(
+        is_plus=bool(int(urow.is_plus)),
+        plus_expires_at=urow.plus_expires_at,
+    )
     await cb.message.edit_text(
         plus_tariff_payment_html(
             t,
             payment_hint=settings.plus_payment_hint,
             platega_auto_note=platega_note,
             online_pay_line=bool(pay_url),
+            status_banner=status_banner,
         ),
         parse_mode="HTML",
         reply_markup=kb_plus_payment_nav(pay_url=pay_url),

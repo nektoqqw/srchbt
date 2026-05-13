@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from html import escape as html_escape
+from zoneinfo import ZoneInfo
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
@@ -62,9 +64,49 @@ def kb_plus_tariffs() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def plus_shop_intro_html() -> str:
+def format_plus_expires_human_ru(plus_expires_at: str | None) -> str:
+    """Дата/время окончания PLUS для пользователя (МСК или UTC)."""
+    if not plus_expires_at:
+        return ""
+    raw = str(plus_expires_at).strip()
+    try:
+        dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return raw
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    try:
+        loc = dt.astimezone(ZoneInfo("Europe/Moscow"))
+        return loc.strftime("%d.%m.%Y %H:%M") + " МСК"
+    except Exception:
+        return dt.astimezone(timezone.utc).strftime("%d.%m.%Y %H:%M") + " UTC"
+
+
+def plus_subscriber_status_banner_html(
+    *,
+    is_plus: bool,
+    plus_expires_at: str | None,
+) -> str:
+    """Если PLUS уже есть — строки в начале экрана тарифов / оплаты."""
+    if not is_plus:
+        return ""
+    if plus_expires_at is None:
+        return (
+            "✅ <b>Подписка PLUS</b> уже активна <b>без даты окончания</b>.\n"
+            "<i>Ниже можно оформить ещё один тариф — дни прибавятся к сроку "
+            "(кроме варианта «навсегда»).</i>\n\n"
+        )
+    when = format_plus_expires_human_ru(plus_expires_at)
+    return (
+        f"✅ <b>Подписка PLUS</b> активирована до <b>{html_escape(when)}</b>.\n"
+        "<i>Новый тариф продлит срок после оплаты.</i>\n\n"
+    )
+
+
+def plus_shop_intro_html(*, status_banner: str = "") -> str:
     return (
         f"<b>♠️ Подписка PLUS</b>\n\n"
+        f"{status_banner}"
         "Снимает лимит на <b>подбор имён</b> на выбранный срок и даёт <b>сохранение никнеймов</b>.\n\n"
         "<b>Выберите срок:</b>"
     )
@@ -106,6 +148,7 @@ def plus_tariff_payment_html(
     payment_hint: str,
     platega_auto_note: bool = False,
     online_pay_line: bool = False,
+    status_banner: str = "",
 ) -> str:
     period = (
         "без срока (навсегда)"
@@ -123,6 +166,7 @@ def plus_tariff_payment_html(
         pay_line = "\n\n<b>Онлайн-оплата:</b> нажмите кнопку <b>«Оплатить»</b> ниже."
     return (
         f"<b>♠️ Оплата PLUS</b>\n\n"
+        f"{status_banner}"
         f"Тариф: <b>{html_escape(t.title_ru)}</b>\n"
         f"Срок: {period}\n"
         f"К оплате: <b>{t.price_rub} ₽</b>{pay_line}\n\n"

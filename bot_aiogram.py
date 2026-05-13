@@ -79,6 +79,7 @@ from plus_tariffs import (
     PLUS_TARIFFS,
     kb_plus_tariffs,
     plus_shop_intro_html,
+    plus_subscriber_status_banner_html,
     plus_tariff_by_key,
 )
 from roll_filters import (
@@ -1051,6 +1052,16 @@ def _kb_luck_need_plus() -> InlineKeyboardMarkup:
     )
 
 
+def _plus_shop_html(db: Database, uid: int) -> str:
+    u = db.get_or_create_user(uid)
+    return plus_shop_intro_html(
+        status_banner=plus_subscriber_status_banner_html(
+            is_plus=bool(int(u.is_plus)),
+            plus_expires_at=u.plus_expires_at,
+        )
+    )
+
+
 def _luck_menu_inline_kb(uid: int, db: Database, settings: Settings) -> InlineKeyboardMarkup:
     rows: list[list[InlineKeyboardButton]] = []
     u = db.get_or_create_user(uid)
@@ -1848,7 +1859,7 @@ async def on_text_frag(message: Message, db: Database, settings: Settings, check
 
     if text == BTN_PLUS_F:
         await message.answer(
-            plus_shop_intro_html(),
+            _plus_shop_html(db, uid),
             reply_markup=kb_plus_tariffs(),
             parse_mode="HTML",
         )
@@ -1955,7 +1966,7 @@ async def on_callback_frag(
 
     if data == "plus:shop":
         await cb.message.edit_text(
-            plus_shop_intro_html(),
+            _plus_shop_html(db, uid),
             parse_mode="HTML",
             reply_markup=kb_plus_tariffs(),
         )
@@ -2849,7 +2860,7 @@ async def on_text_v2(
 
     if text == BTN_PLUS:
         await message.answer(
-            plus_shop_intro_html(),
+            _plus_shop_html(db, uid),
             reply_markup=kb_plus_tariffs(),
             parse_mode="HTML",
         )
@@ -2987,7 +2998,7 @@ async def on_callback_v2(cb: CallbackQuery, db: Database, settings: Settings, ch
 
     if data == "plus:shop":
         await cb.message.edit_text(
-            plus_shop_intro_html(),
+            _plus_shop_html(db, uid),
             parse_mode="HTML",
             reply_markup=kb_plus_tariffs(),
         )
