@@ -50,6 +50,8 @@ from checker import (
 from channel_gate_aiogram import AiogramChannelGateMiddleware
 from config import Settings, load_settings
 from db import Database, SAVED_USERNAMES_LIMIT
+from pending_referral import clear_pending_referrer, take_pending_referrer
+from referral_start import parse_referrer_id_from_start_payload
 from admin_panel import (
     admin_clear_session,
     admin_handle_callback,
@@ -99,18 +101,6 @@ AMNYAM = "Амням"
 ROLL_RULE_LINE_HTML = "<code>" + ("─" * 30) + "</code>"
 # Максимальное время одного запроса подбора имени (сек.)
 FRAGMENT_USERNAME_SEARCH_WALL_S = 180
-
-
-def parse_referrer_id_from_start_payload(payload: str) -> int | None:
-    """Параметр deep-link /start: ref_<telegram_id>."""
-    raw = (payload or "").strip()
-    if not raw or len(raw) > 64:
-        return None
-    m = re.fullmatch(r"(?i)ref_(\d{1,15})", raw)
-    if not m:
-        return None
-    rid = int(m.group(1))
-    return rid if rid > 0 else None
 
 
 async def answer_referral_program(
@@ -3267,6 +3257,10 @@ async def start_entry(
     uid = message.from_user.id
     payload = (command.args or "").strip()
     ref_uid = parse_referrer_id_from_start_payload(payload)
+    if ref_uid is None:
+        ref_uid = take_pending_referrer(uid)
+    else:
+        clear_pending_referrer(uid)
     existed = db.user_exists(uid)
     db.get_or_create_user(uid)
     if not existed and ref_uid is not None:

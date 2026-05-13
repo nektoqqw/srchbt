@@ -5,10 +5,12 @@ from __future__ import annotations
 from typing import Any
 
 from aiogram import BaseMiddleware
-from aiogram.enums import ChatMemberStatus
+from aiogram.enums import ChatMemberStatus, ChatType
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message, TelegramObject
 
 from channel_gate import SUB_CHECK_CALLBACK, subscription_prompt_html
+from pending_referral import stash_pending_referrer, take_pending_referrer
+from referral_start import referrer_id_from_start_message_text
 
 
 def aiogram_subscribe_markup(channel_username: str) -> InlineKeyboardMarkup:
@@ -110,6 +112,10 @@ class AiogramChannelGateMiddleware(BaseMiddleware):
             ok_msg, gate_err_msg = await aiogram_get_channel_membership(bot, ch, user.id)
             if ok_msg:
                 return await handler(event, data)
+            if event.chat.type == ChatType.PRIVATE:
+                rid = referrer_id_from_start_message_text(event.text)
+                if rid is not None:
+                    stash_pending_referrer(user.id, rid)
             await event.answer(
                 subscription_prompt_html(ch)
                 + (
@@ -133,6 +139,36 @@ class AiogramChannelGateMiddleware(BaseMiddleware):
                 if ok:
                     await event.answer("✅ Подписка подтверждена!")
                     assert event.message
+                    db = data.get("db")
+                    uid = user.id
+                    if db is not None:
+                        ref_uid = take_pending_referrer(uid)
+                        existed = db.user_exists(uid)
+                        db.get_or_create_user(uid)
+                        if ref_uid is not None and not existed and db.try_register_referral(
+                            referred_user_id=uid,
+                            referrer_user_id=ref_uid,
+                            bonus_hours=settings.referral_plus_hours,
+                        ):
+                            try:
+                                await bot.send_message(
+                                    ref_uid,
+                                    "<b>🎁 Реферал!</b> Новый пользователь зашёл по вашей ссылке.\n"
+                                    f"Начислено <b>+{settings.referral_plus_hours} ч</b> подписки PLUS.",
+                                    parse_mode="HTML",
+                                )
+                            except Exception:
+                                import logging
+
+                                logging.getLogger(__name__).debug(
+                                    "referrer notify failed", exc_info=True
+                                )
+                    else:
+                        import logging
+
+                        logging.getLogger(__name__).error(
+                            "AiogramChannelGateMiddleware: нет db в data — реферал после подписки не применён."
+                        )
                     await event.message.answer(
                         "<b>✅ Канал подписан.</b> Дальше — кнопки меню или <code>/start</code>.",
                         reply_markup=_aiogram_main_reply_keyboard(user.id, settings),
