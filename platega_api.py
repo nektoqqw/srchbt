@@ -53,16 +53,42 @@ def create_platega_transaction(
         "X-MerchantId": merchant_id.strip(),
         "X-Secret": secret.strip(),
     }
+    log.info(
+        "Platega запрос POST %s paymentMethod=%s amount=%s %s",
+        url,
+        int(payment_method),
+        float(amount_rub),
+        currency.upper(),
+    )
     r = requests.post(url, headers=headers, data=json.dumps(body), timeout=timeout_s)
     try:
         data = r.json()
     except Exception:
         data = {"_raw": r.text[:500]}
     if r.status_code >= 400:
-        log.warning("Platega HTTP %s: %s", r.status_code, data)
+        log.warning(
+            "Platega ошибка HTTP %s URL=%s тело=%s",
+            r.status_code,
+            url,
+            data,
+        )
         raise RuntimeError(f"Platega HTTP {r.status_code}: {data}")
     if not isinstance(data, dict):
         raise RuntimeError("Platega: не JSON-ответ")
+    tid = data.get("transactionId") or data.get("id")
+    has_redir = bool(
+        data.get("redirect")
+        or data.get("redirectUrl")
+        or data.get("paymentUrl")
+        or data.get("url")
+    )
+    log.info(
+        "Platega ответ HTTP %s transactionId=%s есть_redirect=%s ключи_JSON=%s",
+        r.status_code,
+        tid,
+        has_redir,
+        list(data.keys()),
+    )
     return data
 
 
