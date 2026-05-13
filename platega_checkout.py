@@ -27,16 +27,14 @@ from plus_tariffs import (
 
 log = logging.getLogger(__name__)
 
-_PLATEGA_PAYMENT_HINT_OK = (
-    "<i>Оплата только онлайн (Platega): нажмите кнопку <b>«Оплатить»</b> ниже.</i>"
-)
+_PLATEGA_PAYMENT_HINT_OK = ""
 _PLATEGA_PAYMENT_HINT_NO_KEYS = (
-    "<i>Онлайн-оплата недоступна: владельцу бота нужно задать в <code>.env</code> "
+    "<i>Владельцу бота нужно задать в <code>.env</code> "
     "<code>PLATEGA_MERCHANT_ID</code> и <code>PLATEGA_SECRET</code>.</i>"
 )
 
 _PLATEGA_NO_BUTTON_HTML = (
-    "\n\n<i>Кнопка «Оплатить» не создана. Проверьте ключи и URL в <code>.env</code> "
+    "\n\n<i>Платёж не оформлен. Проверьте ключи и URL в <code>.env</code> "
     "и логи бота (строки с <code>Platega</code>).</i>"
 )
 
@@ -233,7 +231,6 @@ async def show_plus_tariff_payment_screen(
             t,
             payment_hint=payment_hint,
             platega_auto_note=platega_note,
-            online_pay_line=bool(pay_url),
             status_banner=status_banner,
         ),
         parse_mode="HTML",
@@ -316,7 +313,6 @@ async def show_luck_tariff_payment_screen(
             t,
             payment_hint=payment_hint,
             platega_auto_note=platega_note,
-            online_pay_line=bool(pay_url),
             status_banner=luck_banner,
         ),
         parse_mode="HTML",

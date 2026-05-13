@@ -147,7 +147,6 @@ def plus_tariff_payment_html(
     *,
     payment_hint: str,
     platega_auto_note: bool = False,
-    online_pay_line: bool = False,
     status_banner: str = "",
 ) -> str:
     period = (
@@ -161,14 +160,11 @@ def plus_tariff_payment_html(
             "\n\n<i>После успешной оплаты PLUS включится автоматически "
             "(обычно в течение минуты).</i>"
         )
-    pay_line = ""
-    if online_pay_line:
-        pay_line = "\n\n<b>Онлайн-оплата:</b> нажмите кнопку <b>«Оплатить»</b> ниже."
     return (
         f"<b>♠️ Оплата PLUS</b>\n\n"
         f"{status_banner}"
         f"Тариф: <b>{html_escape(t.title_ru)}</b>\n"
         f"Срок: {period}\n"
-        f"К оплате: <b>{t.price_rub} ₽</b>{pay_line}\n\n"
+        f"К оплате: <b>{t.price_rub} ₽</b>\n\n"
         f"{payment_hint}{auto}"
     )
