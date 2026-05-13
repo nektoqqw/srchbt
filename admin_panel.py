@@ -37,7 +37,7 @@ def _promo_plus_period_ru(plus_days: int | None) -> str:
 
 
 def _promo_list_view(
-    rows: list[tuple[str, str, int, int, str, int | None]],
+    rows: list[tuple[str, str, int, int, str, int | None, int | None, int | None]],
 ) -> tuple[str, InlineKeyboardMarkup]:
     header = "<b>📋 Промокоды</b>\n<code>════════</code>\n\n"
     if not rows:
@@ -49,13 +49,18 @@ def _promo_list_view(
         )
     lines: list[str] = []
     btn_rows: list[list[InlineKeyboardButton]] = []
-    for code, kind, max_u, active, created, plus_days in rows:
+    for code, kind, max_u, active, created, plus_days, plus_hours, luck_hours in rows:
         st = "✅" if active else "⛔️"
         kind_ru = "PLUS" if kind == "plus" else "Удача"
         lim = "∞" if max_u <= 0 else str(max_u)
         extra = ""
         if kind == "plus":
-            extra = f" · <i>{html.escape(_promo_plus_period_ru(plus_days))}</i>"
+            if plus_hours is not None and plus_hours > 0:
+                extra = f" · <i>+{plus_hours} ч</i>"
+            elif plus_days is not None:
+                extra = f" · <i>{html.escape(_promo_plus_period_ru(plus_days))}</i>"
+        elif kind == "luck" and luck_hours is not None and luck_hours > 0:
+            extra = f" · <i>+{luck_hours} ч</i>"
         lines.append(
             f"{st} <code>{html.escape(code)}</code> · {kind_ru} · лимит {lim} · "
             f"<i>{html.escape(created)}</i>{extra}"
@@ -285,17 +290,54 @@ async def admin_handle_callback(
                 row = []
         if row:
             rows.append(row)
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text="⏱ PLUS на часы",
+                    callback_data="adm:pph",
+                )
+            ]
+        )
         rows.append([InlineKeyboardButton(text="« Пульт", callback_data="adm:home")])
         await cb.message.edit_text(
             "<b>✨ Новый промокод PLUS</b>\n<code>────────</code>\n\n"
-            "Выберите <b>срок подписки</b> — как в витрине тарифов (1 день, 3 дня, неделя, …).\n\n"
-            "Дальше одним сообщением пришлёте <code>КОД ЛИМИТ</code>:\n"
+            "Выберите <b>срок подписки</b> по дням (как в витрине) <b>или</b> кнопку "
+            "<b>«PLUS на часы»</b> для произвольного числа часов.\n\n"
+            "Дальше одним сообщением пришлёте <code>КОД ЛИМИТ</code> "
+            "(для тарифа по дням) или <code>КОД ЛИМИТ ЧАСЫ</code> (для часов).\n"
             "• <b>КОД</b> — латиница и цифры, 3–40 символов\n"
             "• <b>ЛИМИТ</b> — сколько раз код сработает на разных людей "
             "(<code>0</code> = без лимита)\n\n"
             "<code>/cancel</code> — отменить.",
             parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
+        )
+        return
+    if data == "adm:pph":
+        admin_clear_session(sess_uid)
+        sess_uid.pop(ADMIN_SESS_BROADCAST, None)
+        sess_uid.pop(ADMIN_SESS_DOC, None)
+        sess_uid[ADMIN_SESS_PROMO] = "plus_by_hours"
+        await cb.message.edit_text(
+            "<b>✨ Промокод PLUS на часы</b>\n<code>────────</code>\n\n"
+            "Одним сообщением пришлите <b>три поля через пробел</b>:\n"
+            "<code>КОД ЛИМИТ ЧАСЫ</code>\n\n"
+            "• <b>КОД</b> — латиница и цифры, 3–40 символов\n"
+            "• <b>ЛИМИТ</b> — сколько раз код сработает (<code>0</code> = без лимита)\n"
+            "• <b>ЧАСЫ</b> — сколько часов PLUS добавить к сроку (1…8760)\n\n"
+            "<i>Пример:</i> <code>GIFT2026 100 3</code>\n\n"
+            "<code>/cancel</code> — отменить.",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text="« К срокам PLUS", callback_data="adm:ppm"
+                        )
+                    ],
+                    [InlineKeyboardButton(text="« Пульт", callback_data="adm:home")],
+                ]
+            ),
         )
         return
     if data.startswith("adm:ppt:"):
@@ -335,11 +377,16 @@ async def admin_handle_callback(
         )
         return
     if data == "adm:pl":
+        admin_clear_session(sess_uid)
         sess_uid[ADMIN_SESS_PROMO] = "luck"
         await cb.message.edit_text(
             "<b>🍀 Новый промокод Удача</b>\n<code>────────</code>\n\n"
-            "Формат тот же:\n<code>КОД ЛИМИТ</code>\n\n"
-            "<i>Пример:</i> <code>LUCKY7 100</code>\n\n"
+            "<b>Вариант 1 — без таймера</b> (как раньше), два поля:\n"
+            "<code>КОД ЛИМИТ</code>\n\n"
+            "<b>Вариант 2 — на часы</b>, три поля:\n"
+            "<code>КОД ЛИМИТ ЧАСЫ</code>\n"
+            "(часы 1…720; подписка «Удача» продлевается от текущего окончания или от сейчас)\n\n"
+            "<i>Примеры:</i> <code>LUCKY7 100</code> или <code>LUCKY7 100 48</code>\n\n"
             "<code>/cancel</code> — отменить.",
             parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup(
@@ -560,19 +607,34 @@ async def admin_handle_callback(
         return
 
 
-def _parse_promo_line(text: str) -> tuple[str, int] | None:
+def _parse_promo_tokens(text: str) -> tuple[str, int, int | None] | None:
+    """КОД, лимит активаций, опционально третье число (часы PLUS или Удачи)."""
     raw = text.strip()
     if not raw:
         return None
     parts = raw.split()
     if len(parts) == 1:
-        return parts[0], 0
+        return parts[0], 0, None
     code = parts[0]
     try:
         lim = int(parts[1])
     except ValueError:
-        lim = 0
-    return code, max(0, lim)
+        return None
+    lim = max(0, lim)
+    if len(parts) >= 3:
+        try:
+            h = int(parts[2])
+        except ValueError:
+            return None
+        return code, lim, h
+    return code, lim, None
+
+
+def _parse_promo_line(text: str) -> tuple[str, int] | None:
+    t = _parse_promo_tokens(text)
+    if not t:
+        return None
+    return t[0], t[1]
 
 
 async def admin_try_handle_text(
@@ -631,22 +693,28 @@ async def admin_try_handle_text(
 
     kind = sess_uid.get(ADMIN_SESS_PROMO)
     if kind == "luck":
-        parsed = _parse_promo_line(message.text)
+        parsed = _parse_promo_tokens(message.text)
         sess_uid.pop(ADMIN_SESS_PROMO, None)
         if not parsed:
             await message.answer(
-                "<b>Формат не распознан.</b> Пример: <code>MYCODE 25</code>",
+                "<b>Формат не распознан.</b> Примеры: <code>MYCODE 25</code> или "
+                "<code>MYCODE 25 12</code>",
                 parse_mode="HTML",
                 reply_markup=kb_main,
             )
             return True
-        code, max_u = parsed
-        ok, reason = db.dynamic_promo_create(code, "luck", max_u)
+        code, max_u, hours = parsed
+        lh = hours if hours is not None and hours > 0 else None
+        ok, reason = db.dynamic_promo_create(code, "luck", max_u, luck_hours=lh)
         if ok:
             lim_txt = "без лимита" if max_u <= 0 else f"до {max_u} активаций"
+            if lh:
+                extra_h = f" на <b>{lh}</b> ч"
+            else:
+                extra_h = ""
             await message.answer(
                 f"<b>Готово.</b> Код <code>{html.escape(code.upper())}</code> "
-                f"(luck) — <i>{lim_txt}</i>.\n\n"
+                f"(Удача{extra_h}) — <i>{lim_txt}</i>.\n\n"
                 "Пользователь вводит его в том же месте, что и обычный промокод.",
                 parse_mode="HTML",
                 reply_markup=kb_main,
@@ -657,6 +725,52 @@ async def admin_try_handle_text(
                 "format": "неверный формат кода (латиница, цифры, _, 3–40 символов)",
                 "kind": "внутренняя ошибка вида",
                 "plus_days": "неверный срок PLUS",
+                "luck_hours": "часы для Удачи должны быть от 1 до 720",
+            }.get(reason, reason)
+            await message.answer(
+                f"<b>Не создано:</b> {html.escape(err)}",
+                parse_mode="HTML",
+                reply_markup=kb_main,
+            )
+        return True
+
+    if kind == "plus_by_hours":
+        parsed = _parse_promo_tokens(message.text)
+        sess_uid.pop(ADMIN_SESS_PROMO, None)
+        if not parsed:
+            await message.answer(
+                "<b>Формат не распознан.</b> Нужно три поля: "
+                "<code>КОД ЛИМИТ ЧАСЫ</code> — пример: <code>GIFT 50 24</code>",
+                parse_mode="HTML",
+                reply_markup=kb_main,
+            )
+            return True
+        code, max_u, hours = parsed
+        if hours is None or hours <= 0:
+            await message.answer(
+                "<b>Нужно указать часы.</b> Формат: <code>КОД ЛИМИТ ЧАСЫ</code> "
+                "(последнее число — от 1 до 8760).",
+                parse_mode="HTML",
+                reply_markup=kb_main,
+            )
+            return True
+        ok, reason = db.dynamic_promo_create(code, "plus", max_u, plus_hours=hours)
+        if ok:
+            lim_txt = "без лимита" if max_u <= 0 else f"до {max_u} активаций"
+            await message.answer(
+                f"<b>Готово.</b> Код <code>{html.escape(code.upper())}</code> "
+                f"(PLUS <b>+{hours}</b> ч) — <i>{lim_txt}</i>.\n\n"
+                "Пользователь вводит его там же, где обычный промокод PLUS.",
+                parse_mode="HTML",
+                reply_markup=kb_main,
+            )
+        else:
+            err = {
+                "exists": "такой код уже есть в базе",
+                "format": "неверный формат кода (латиница, цифры, _, 3–40 символов)",
+                "kind": "внутренняя ошибка вида",
+                "plus_days": "неверный срок PLUS",
+                "plus_hours": "часы для PLUS должны быть от 1 до 8760",
             }.get(reason, reason)
             await message.answer(
                 f"<b>Не создано:</b> {html.escape(err)}",
@@ -705,6 +819,7 @@ async def admin_try_handle_text(
                 "format": "неверный формат кода (латиница, цифры, _, 3–40 символов)",
                 "kind": "внутренняя ошибка вида",
                 "plus_days": "неверный срок PLUS",
+                "plus_hours": "часы для PLUS должны быть от 1 до 8760",
             }.get(reason, reason)
             await message.answer(
                 f"<b>Не создано:</b> {html.escape(err)}",
@@ -764,15 +879,15 @@ def redeem_plus_code(
     *,
     db: Database,
     settings: Settings,
-) -> tuple[bool, str, int | None]:
-    """(успех, reason, plus_days). ``plus_days`` — ``None`` без срока; иначе дней продления (динамический код)."""
+) -> tuple[bool, str, int | None, int | None]:
+    """(успех, reason, plus_days, plus_hours). Для фиксированного .env кода — без часов/дней в смысле динамики."""
     t = text.strip().upper()
     if t == settings.plus_promo_code:
-        return True, "env", None
-    ok, _reason, pd = db.dynamic_promo_redeem(t, uid, "plus")
-    if ok:
-        return True, "dynamic", pd
-    return False, _reason, None
+        return True, "env", None, None
+    ok, reason, snap = db.dynamic_promo_redeem(t, uid, "plus")
+    if ok and snap:
+        return True, "dynamic", snap.plus_days, snap.plus_hours
+    return False, reason, None, None
 
 
 def redeem_luck_code(
@@ -781,19 +896,20 @@ def redeem_luck_code(
     *,
     db: Database,
     settings: Settings,
-) -> tuple[bool, str]:
+) -> tuple[bool, str, int | None]:
+    """(успех, reason, luck_hours из динамики или None = без таймера / .env)."""
     t = text.strip().upper()
     if settings.luck_promo_code and t == settings.luck_promo_code:
         if settings.luck_promo_max_uses > 0:
             if not db.luck_promo_try_consume(
                 settings.luck_promo_code, settings.luck_promo_max_uses
             ):
-                return False, "limit_env"
-        return True, "env"
-    ok, reason, _pd = db.dynamic_promo_redeem(t, uid, "luck")
-    if ok:
-        return True, "dynamic"
-    return False, reason
+                return False, "limit_env", None
+        return True, "env", None
+    ok, reason, snap = db.dynamic_promo_redeem(t, uid, "luck")
+    if ok and snap:
+        return True, "dynamic", snap.luck_hours
+    return False, reason, None
 
 
 def luck_promo_entry_available(settings: Settings, db: Database) -> bool:

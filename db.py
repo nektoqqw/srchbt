@@ -35,6 +35,15 @@ class UserRow:
     luck_roll_paused: int = 0
 
 
+@dataclass(frozen=True)
+class PromoRedeemSnap:
+    """Результат успешной активации динамического промокода (для начисления в UI)."""
+
+    plus_days: int | None = None
+    plus_hours: int | None = None
+    luck_hours: int | None = None
+
+
 @dataclass
 class FragmentItemRow:
     username: str
@@ -52,6 +61,10 @@ def _migrate_dynamic_promos(conn: sqlite3.Connection) -> None:
     cols = {str(row[1]) for row in cur.fetchall()}
     if "plus_days" not in cols:
         conn.execute("ALTER TABLE dynamic_promos ADD COLUMN plus_days INTEGER")
+    if "plus_hours" not in cols:
+        conn.execute("ALTER TABLE dynamic_promos ADD COLUMN plus_hours INTEGER")
+    if "luck_hours" not in cols:
+        conn.execute("ALTER TABLE dynamic_promos ADD COLUMN luck_hours INTEGER")
 
 
 def _connect(path: Path) -> sqlite3.Connection:
@@ -514,26 +527,49 @@ class Database:
         max_uses: int,
         *,
         plus_days: int | None = None,
+        plus_hours: int | None = None,
+        luck_hours: int | None = None,
     ) -> tuple[bool, str]:
         if kind not in ("plus", "luck"):
             return False, "kind"
-        if kind == "luck" and plus_days is not None:
-            return False, "kind"
         allowed = _plus_promo_allowed_days()
-        if kind == "plus" and plus_days not in allowed:
-            return False, "plus_days"
         c = code.strip().upper()
         if not re.fullmatch(r"[A-Z0-9_]{3,40}", c):
             return False, "format"
         mu = max(0, int(max_uses))
+        ph: int | None = None
+        lh: int | None = None
+        pd: int | None = None
+        if kind == "luck":
+            if plus_days is not None or plus_hours is not None:
+                return False, "kind"
+            if luck_hours is not None:
+                lh = int(luck_hours)
+                if lh < 1 or lh > 720:
+                    return False, "luck_hours"
+        elif kind == "plus":
+            if luck_hours is not None:
+                return False, "kind"
+            if plus_hours is not None:
+                ph = int(plus_hours)
+                if ph < 1 or ph > 8760:
+                    return False, "plus_hours"
+                if plus_days is not None:
+                    return False, "plus_hours"
+            else:
+                pd = plus_days
+                if pd not in allowed:
+                    return False, "plus_days"
         try:
             with self._cursor() as cur:
                 cur.execute(
                     """
-                    INSERT INTO dynamic_promos (code, kind, max_uses, is_active, plus_days)
-                    VALUES (?, ?, ?, 1, ?)
+                    INSERT INTO dynamic_promos (
+                        code, kind, max_uses, is_active, plus_days, plus_hours, luck_hours
+                    )
+                    VALUES (?, ?, ?, 1, ?, ?, ?)
                     """,
-                    (c, kind, mu, plus_days if kind == "plus" else None),
+                    (c, kind, mu, pd, ph, lh),
                 )
         except sqlite3.IntegrityError:
             return False, "exists"
@@ -541,10 +577,9 @@ class Database:
 
     def dynamic_promo_redeem(
         self, code: str, user_id: int, kind: str
-    ) -> tuple[bool, str, int | None]:
+    ) -> tuple[bool, str, PromoRedeemSnap | None]:
         """
-        Для kind ``plus`` при успехе третий элемент — число дней продления или ``None`` (без срока).
-        Для ``luck`` третий элемент всегда ``None``.
+        При успехе третий элемент — что начислить: дни PLUS, часы PLUS или часы Удачи.
         """
         if kind not in ("plus", "luck"):
             return False, "kind", None
@@ -553,7 +588,10 @@ class Database:
             return False, "empty", None
         with self._cursor() as cur:
             cur.execute(
-                "SELECT kind, max_uses, is_active, plus_days FROM dynamic_promos WHERE code = ?",
+                """
+                SELECT kind, max_uses, is_active, plus_days, plus_hours, luck_hours
+                FROM dynamic_promos WHERE code = ?
+                """,
                 (c,),
             )
             row = cur.fetchone()
@@ -578,24 +616,37 @@ class Database:
                 n = int(cur.fetchone()[0])
                 if n >= max_uses:
                     return False, "limit", None
-            plus_out: int | None = None
+            snap: PromoRedeemSnap | None = None
             if kind == "plus":
                 pd = row["plus_days"]
-                plus_out = None if pd is None else int(pd)
+                ph = row["plus_hours"]
+                snap = PromoRedeemSnap(
+                    plus_days=None if pd is None else int(pd),
+                    plus_hours=None if ph is None else int(ph),
+                    luck_hours=None,
+                )
+            else:
+                lh = row["luck_hours"]
+                snap = PromoRedeemSnap(
+                    plus_days=None,
+                    plus_hours=None,
+                    luck_hours=None if lh is None else int(lh),
+                )
             cur.execute(
                 "INSERT INTO dynamic_promo_uses (code, user_id) VALUES (?, ?)",
                 (c, user_id),
             )
-        return True, "ok", plus_out
+        return True, "ok", snap
 
     def dynamic_promo_list(
         self, *, limit: int = 25
-    ) -> list[tuple[str, str, int, int, str, int | None]]:
-        """code, kind, max_uses, is_active, created_at, plus_days (только PLUS; иначе None)."""
+    ) -> list[tuple[str, str, int, int, str, int | None, int | None, int | None]]:
+        """code, kind, max_uses, is_active, created_at, plus_days, plus_hours, luck_hours."""
         with self._cursor() as cur:
             cur.execute(
                 """
-                SELECT code, kind, max_uses, is_active, created_at, plus_days
+                SELECT code, kind, max_uses, is_active, created_at,
+                       plus_days, plus_hours, luck_hours
                 FROM dynamic_promos
                 ORDER BY created_at DESC
                 LIMIT ?
@@ -603,9 +654,13 @@ class Database:
                 (limit,),
             )
             rows = cur.fetchall()
-            out: list[tuple[str, str, int, int, str, int | None]] = []
+            out: list[
+                tuple[str, str, int, int, str, int | None, int | None, int | None]
+            ] = []
             for r in rows:
                 pd = r["plus_days"]
+                ph = r["plus_hours"]
+                lh = r["luck_hours"]
                 out.append(
                     (
                         str(r["code"]),
@@ -614,6 +669,8 @@ class Database:
                         int(r["is_active"]),
                         str(r["created_at"]),
                         None if pd is None else int(pd),
+                        None if ph is None else int(ph),
+                        None if lh is None else int(lh),
                     )
                 )
             return out

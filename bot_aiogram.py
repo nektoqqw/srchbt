@@ -19,7 +19,7 @@ import re
 import string
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from collections import defaultdict
 from functools import partial
@@ -163,6 +163,41 @@ def _plus_promo_period_user_ru(plus_days: int | None) -> str:
                 "время прибавляется от сейчас или от конца действующего PLUS."
             )
     return f"<b>{plus_days}</b> календарных дней."
+
+
+def _apply_redeemed_luck(db: Database, uid: int, luck_hours: int | None) -> str:
+    """Текст о начислении удачи после успешного redeem."""
+    if luck_hours is not None and luck_hours > 0:
+        db.extend_luck_delta(uid, timedelta(hours=luck_hours))
+        return f"Подписка «Удача» продлена на <b>{luck_hours}</b> ч."
+    db.set_luck(uid, True)
+    return "Режим «Удача» включён."
+
+
+def _apply_redeemed_plus(
+    db: Database, uid: int, *, plus_days: int | None, plus_hours: int | None
+) -> str:
+    """Одна строка описания срока PLUS после успешного redeem (HTML)."""
+    if plus_hours is not None and plus_hours > 0:
+        urow = db.get_or_create_user(uid)
+        if int(urow.is_plus) and not urow.plus_expires_at:
+            return (
+                f"Продление PLUS на <b>{plus_hours}</b> ч."
+                "\n\n<i>У вас уже PLUS без даты окончания — часы по коду не добавлялись.</i>"
+            )
+        db.extend_plus_hours(uid, plus_hours)
+        return f"Продление PLUS на <b>{plus_hours}</b> ч."
+    if plus_days is None:
+        db.set_plus_forever_paid(uid)
+        return _plus_promo_period_user_ru(None)
+    urow = db.get_or_create_user(uid)
+    if int(urow.is_plus) and not urow.plus_expires_at:
+        return (
+            _plus_promo_period_user_ru(plus_days)
+            + "\n\n<i>У вас уже PLUS без даты окончания — срок по этому коду не меняли.</i>"
+        )
+    db.extend_plus_days(uid, plus_days)
+    return _plus_promo_period_user_ru(plus_days)
 
 
 def _ui_frag_pick_length() -> str:
@@ -1636,8 +1671,9 @@ async def on_text_frag(message: Message, db: Database, settings: Settings, check
                 parse_mode="HTML",
             )
             return
-        ok, reason = redeem_luck_code(text, uid, db=db, settings=settings)
+        ok, reason, luck_hours = redeem_luck_code(text, uid, db=db, settings=settings)
         if ok:
+            luck_desc = _apply_redeemed_luck(db, uid, luck_hours)
             rem_txt = ""
             if (
                 settings.luck_promo_code
@@ -1649,6 +1685,7 @@ async def on_text_frag(message: Message, db: Database, settings: Settings, check
                 rem_txt = f"\n\n<i>Осталось активаций этого кода: <b>{rem}</b>.</i>"
             await message.answer(
                 "<b>🍀 Удача активирована.</b>\n\n"
+                f"{luck_desc}\n\n"
                 "Режим «Удача» учтётся при следующем подборе имени."
                 + rem_txt,
                 reply_markup=kb_fragment_main(uid=uid, settings=settings),
@@ -1670,20 +1707,13 @@ async def on_text_frag(message: Message, db: Database, settings: Settings, check
         return
 
     if PENDING_PROMO.pop(uid, None):
-        ok, reason, plus_days = redeem_plus_code(text, uid, db=db, settings=settings)
+        ok, reason, plus_days, plus_hours = redeem_plus_code(
+            text, uid, db=db, settings=settings
+        )
         if ok:
-            skip_timed_note = ""
-            if plus_days is None:
-                db.set_plus_forever_paid(uid)
-            else:
-                urow = db.get_or_create_user(uid)
-                if int(urow.is_plus) and not urow.plus_expires_at:
-                    skip_timed_note = (
-                        "\n\n<i>У вас уже PLUS без даты окончания — срок по этому коду не меняли.</i>"
-                    )
-                else:
-                    db.extend_plus_days(uid, plus_days)
-            period_line = _plus_promo_period_user_ru(plus_days) + skip_timed_note
+            period_line = _apply_redeemed_plus(
+                db, uid, plus_days=plus_days, plus_hours=plus_hours
+            )
             await message.answer(
                 "<b>Подписка PLUS активирована.</b>\n\n"
                 f"{period_line}\n\n"
@@ -2683,8 +2713,9 @@ async def on_text_v2(
                 parse_mode="HTML",
             )
             return
-        ok, reason = redeem_luck_code(text, uid, db=db, settings=settings)
+        ok, reason, luck_hours = redeem_luck_code(text, uid, db=db, settings=settings)
         if ok:
+            luck_desc = _apply_redeemed_luck(db, uid, luck_hours)
             rem_txt = ""
             if (
                 settings.luck_promo_code
@@ -2696,6 +2727,7 @@ async def on_text_v2(
                 rem_txt = f"\n\n<i>Осталось активаций этого кода: <b>{rem}</b>.</i>"
             await message.answer(
                 "<b>🍀 Удача активирована.</b>\n\n"
+                f"{luck_desc}\n\n"
                 "При подборе будет учитываться приоритет удачных имён в каталоге."
                 + rem_txt,
                 reply_markup=kb_v2_main(uid=uid, settings=settings),
@@ -2717,20 +2749,13 @@ async def on_text_v2(
         return
 
     if PENDING_PROMO.pop(uid, None):
-        ok, _reason, plus_days = redeem_plus_code(text, uid, db=db, settings=settings)
+        ok, reason, plus_days, plus_hours = redeem_plus_code(
+            text, uid, db=db, settings=settings
+        )
         if ok:
-            skip_timed_note = ""
-            if plus_days is None:
-                db.set_plus_forever_paid(uid)
-            else:
-                urow = db.get_or_create_user(uid)
-                if int(urow.is_plus) and not urow.plus_expires_at:
-                    skip_timed_note = (
-                        "\n\n<i>У вас уже PLUS без даты окончания — срок по этому коду не меняли.</i>"
-                    )
-                else:
-                    db.extend_plus_days(uid, plus_days)
-            period_line = _plus_promo_period_user_ru(plus_days) + skip_timed_note
+            period_line = _apply_redeemed_plus(
+                db, uid, plus_days=plus_days, plus_hours=plus_hours
+            )
             await message.answer(
                 "<b>Подписка PLUS активирована.</b>\n\n"
                 f"{period_line}\n\n"
@@ -2740,9 +2765,9 @@ async def on_text_v2(
             )
         else:
             extra = ""
-            if _reason == "already":
+            if reason == "already":
                 extra = " (этот код вы уже использовали)"
-            elif _reason == "limit":
+            elif reason == "limit":
                 extra = " (лимит исчерпан)"
             await message.answer(
                 "<b>Отклонено.</b> Код не принят"
