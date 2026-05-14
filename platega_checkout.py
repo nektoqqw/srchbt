@@ -158,6 +158,24 @@ def _tx_id_from_response(data: dict) -> str:
     return str(t).strip() if t is not None else ""
 
 
+def _platega_amount_to_charge_rub(settings: Settings, tariff_price_rub: float) -> float:
+    """Сумма в Platega и в platega_orders (должны совпадать для подтверждения по вебхуку)."""
+    tr = settings.platega_test_amount_rub
+    if tr is not None and tr > 0:
+        return float(tr)
+    return float(sale_price_float(tariff_price_rub))
+
+
+def _hint_test_amount_prefix(settings: Settings) -> str:
+    tr = settings.platega_test_amount_rub
+    if tr is None or tr <= 0:
+        return ""
+    return (
+        f"<b>⚠️ Тестовая сумма:</b> к оплате в Platega уйдёт <b>{tr:g} ₽</b> "
+        f"(<code>PLATEGA_TEST_AMOUNT_RUB</code>). После проверки удалите строку из <code>.env</code>.\n\n"
+    )
+
+
 async def show_plus_tariff_payment_screen(
     cb: CallbackQuery,
     db: Database,
@@ -172,9 +190,17 @@ async def show_plus_tariff_payment_screen(
         secret=settings.platega_secret,
     )
     payment_hint = _PLATEGA_PAYMENT_HINT_OK if pg_ok else _PLATEGA_PAYMENT_HINT_NO_KEYS
+    payment_hint = _hint_test_amount_prefix(settings) + payment_hint
     if pg_ok:
         ret_url, fail_url = await _platega_return_urls(settings, cb)
         payload = f"tg:{uid}:plus:{t.key}"
+        charge_rub = _platega_amount_to_charge_rub(settings, t.price_rub)
+        if settings.platega_test_amount_rub is not None and settings.platega_test_amount_rub > 0:
+            log.info(
+                "Platega PLUS: тестовая сумма %s ₽ вместо тарифа %s",
+                charge_rub,
+                sale_price_float(t.price_rub),
+            )
         try:
             data = await asyncio.to_thread(
                 create_platega_transaction,
@@ -182,7 +208,7 @@ async def show_plus_tariff_payment_screen(
                 secret=settings.platega_secret,
                 api_base=settings.platega_api_base,
                 payment_method=settings.platega_payment_method,
-                amount_rub=sale_price_float(t.price_rub),
+                amount_rub=charge_rub,
                 currency="RUB",
                 description=f"PLUS {t.title_ru}",
                 return_url=ret_url,
@@ -205,7 +231,7 @@ async def show_plus_tariff_payment_screen(
                         user_id=uid,
                         product_kind="plus",
                         tariff_key=t.key,
-                        amount_rub=sale_price_float(t.price_rub),
+                        amount_rub=charge_rub,
                         currency="RUB",
                         pay_url=pay_url,
                     )
@@ -254,9 +280,17 @@ async def show_luck_tariff_payment_screen(
         secret=settings.platega_secret,
     )
     payment_hint = _PLATEGA_PAYMENT_HINT_OK if pg_ok else _PLATEGA_PAYMENT_HINT_NO_KEYS
+    payment_hint = _hint_test_amount_prefix(settings) + payment_hint
     if pg_ok:
         ret_url, fail_url = await _platega_return_urls(settings, cb)
         payload = f"tg:{uid}:luck:{t.key}"
+        charge_rub = _platega_amount_to_charge_rub(settings, t.price_rub)
+        if settings.platega_test_amount_rub is not None and settings.platega_test_amount_rub > 0:
+            log.info(
+                "Platega luck: тестовая сумма %s ₽ вместо тарифа %s",
+                charge_rub,
+                sale_price_float(t.price_rub),
+            )
         try:
             data = await asyncio.to_thread(
                 create_platega_transaction,
@@ -264,7 +298,7 @@ async def show_luck_tariff_payment_screen(
                 secret=settings.platega_secret,
                 api_base=settings.platega_api_base,
                 payment_method=settings.platega_payment_method,
-                amount_rub=sale_price_float(t.price_rub),
+                amount_rub=charge_rub,
                 currency="RUB",
                 description=f"Удача {t.title_ru}",
                 return_url=ret_url,
@@ -287,7 +321,7 @@ async def show_luck_tariff_payment_screen(
                         user_id=uid,
                         product_kind="luck",
                         tariff_key=t.key,
-                        amount_rub=sale_price_float(t.price_rub),
+                        amount_rub=charge_rub,
                         currency="RUB",
                         pay_url=pay_url,
                     )

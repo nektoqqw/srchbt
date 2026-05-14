@@ -84,6 +84,8 @@ class Settings:
     # полные URL после оплаты (если пусто — подставляется https://t.me/<бот>?start=platega_ok)
     platega_return_url: str = ""
     platega_failed_url: str = ""
+    # Если задано (>0): в Platega и в platega_orders уходит эта сумма вместо цены тарифа (для теста). Потом убрать из .env.
+    platega_test_amount_rub: float | None = None
 
 
 def load_settings() -> Settings:
@@ -209,6 +211,15 @@ def load_settings() -> Settings:
     platega_v2_universal = v2u in ("1", "true", "yes", "on")
     platega_return_url = (os.environ.get("PLATEGA_RETURN_URL") or "").strip()
     platega_failed_url = (os.environ.get("PLATEGA_FAILED_URL") or "").strip()
+    _test_amt_raw = (os.environ.get("PLATEGA_TEST_AMOUNT_RUB") or "").strip().lower()
+    platega_test_amount_rub: float | None = None
+    if _test_amt_raw and _test_amt_raw not in ("0", "0.0", "off", "false", "none", "disable", "disabled"):
+        try:
+            tv = float(_test_amt_raw)
+            if tv > 0:
+                platega_test_amount_rub = tv
+        except ValueError:
+            pass
 
     return Settings(
         bot_token=token,
@@ -240,4 +251,5 @@ def load_settings() -> Settings:
         platega_v2_universal=platega_v2_universal,
         platega_return_url=platega_return_url,
         platega_failed_url=platega_failed_url,
+        platega_test_amount_rub=platega_test_amount_rub,
     )
