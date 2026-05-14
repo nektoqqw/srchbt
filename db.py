@@ -1240,3 +1240,18 @@ class Database:
                 """,
                 (tid,),
             )
+
+    def platega_mark_chargeback(self, transaction_id: str) -> None:
+        """Возврат средств (webhook CHARGEBACK): фиксируем в БД; отзыв PLUS/Удачи — вручную."""
+        tid = transaction_id.strip()
+        if not tid:
+            return
+        with self._cursor() as cur:
+            cur.execute(
+                """
+                UPDATE platega_orders
+                SET status = 'CHARGEBACK', updated_at = datetime('now')
+                WHERE transaction_id = ? AND status IN ('PENDING', 'CONFIRMED')
+                """,
+                (tid,),
+            )

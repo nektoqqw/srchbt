@@ -188,6 +188,7 @@ async def show_plus_tariff_payment_screen(
                 return_url=ret_url,
                 failed_url=fail_url,
                 payload=payload,
+                universal_payment_form=settings.platega_v2_universal,
             )
             pay_url = _pay_url_from_response(data)
             tx_id = _tx_id_from_response(data)
@@ -269,6 +270,7 @@ async def show_luck_tariff_payment_screen(
                 return_url=ret_url,
                 failed_url=fail_url,
                 payload=payload,
+                universal_payment_form=settings.platega_v2_universal,
             )
             pay_url = _pay_url_from_response(data)
             tx_id = _tx_id_from_response(data)

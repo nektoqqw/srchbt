@@ -126,6 +126,12 @@ async def platega_callback(request: web.Request) -> web.Response:
             )
     elif st in ("CANCELED", "CANCELLED", "FAILED", "REJECTED"):
         db.platega_mark_canceled(tx)
+    elif st == "CHARGEBACK":
+        db.platega_mark_chargeback(tx)
+        log.warning(
+            "Platega CHARGEBACK transaction_id=%s — проверьте заказ и при необходимости отзовите доступ вручную.",
+            tx,
+        )
 
     return web.json_response({"ok": True})
 

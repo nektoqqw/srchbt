@@ -31,32 +31,45 @@ def create_platega_transaction(
     return_url: str,
     failed_url: str,
     payload: str,
+    universal_payment_form: bool = False,
     timeout_s: float = 45.0,
 ) -> dict[str, Any]:
     """
-    POST /transaction/process.
+    POST /transaction/process (с ``paymentMethod``) или POST /v2/transaction/process
+    (общая платёжная форма без ``paymentMethod`` — см. документацию Platega).
 
     Поле ``id`` в теле **нельзя** передавать — ID генерирует Platega (иначе ошибки / риск для магазина).
     """
     base = (api_base or DEFAULT_BASE).rstrip("/")
-    url = f"{base}/transaction/process"
-    body: dict[str, Any] = {
-        "paymentMethod": int(payment_method),
-        "paymentDetails": {"amount": float(amount_rub), "currency": currency.upper()},
-        "description": (description or "")[:512],
-        "return": return_url,
-        "failedUrl": failed_url,
-        "payload": (payload or "")[:1024],
-    }
+    if universal_payment_form:
+        url = f"{base}/v2/transaction/process"
+        body: dict[str, Any] = {
+            "paymentDetails": {"amount": float(amount_rub), "currency": currency.upper()},
+            "description": (description or "")[:512],
+            "return": return_url,
+            "failedUrl": failed_url,
+            "payload": (payload or "")[:1024],
+        }
+    else:
+        url = f"{base}/transaction/process"
+        body = {
+            "paymentMethod": int(payment_method),
+            "paymentDetails": {"amount": float(amount_rub), "currency": currency.upper()},
+            "description": (description or "")[:512],
+            "return": return_url,
+            "failedUrl": failed_url,
+            "payload": (payload or "")[:1024],
+        }
     headers = {
         "Content-Type": "application/json",
         "X-MerchantId": merchant_id.strip(),
         "X-Secret": secret.strip(),
     }
     log.info(
-        "Platega запрос POST %s paymentMethod=%s amount=%s %s",
+        "Platega запрос POST %s universal=%s paymentMethod=%s amount=%s %s",
         url,
-        int(payment_method),
+        universal_payment_form,
+        int(payment_method) if not universal_payment_form else None,
         float(amount_rub),
         currency.upper(),
     )
@@ -103,6 +116,7 @@ def get_platega_transaction(
     base = (api_base or DEFAULT_BASE).rstrip("/")
     url = f"{base}/transaction/{transaction_id.strip()}"
     headers = {
+        "Content-Type": "application/json",
         "X-MerchantId": merchant_id.strip(),
         "X-Secret": secret.strip(),
     }

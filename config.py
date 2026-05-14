@@ -79,6 +79,8 @@ class Settings:
     platega_secret: str = ""
     platega_api_base: str = "https://app.platega.io"
     platega_payment_method: int = 2
+    # True — POST /v2/transaction/process без paymentMethod (все методы из ЛК на одной форме)
+    platega_v2_universal: bool = False
     # полные URL после оплаты (если пусто — подставляется https://t.me/<бот>?start=platega_ok)
     platega_return_url: str = ""
     platega_failed_url: str = ""
@@ -203,6 +205,8 @@ def load_settings() -> Settings:
         platega_payment_method = int((os.environ.get("PLATEGA_PAYMENT_METHOD") or "2").strip())
     except ValueError:
         platega_payment_method = 2
+    v2u = (os.environ.get("PLATEGA_V2_UNIVERSAL") or "0").strip().lower()
+    platega_v2_universal = v2u in ("1", "true", "yes", "on")
     platega_return_url = (os.environ.get("PLATEGA_RETURN_URL") or "").strip()
     platega_failed_url = (os.environ.get("PLATEGA_FAILED_URL") or "").strip()
 
@@ -233,6 +237,7 @@ def load_settings() -> Settings:
         platega_secret=platega_secret,
         platega_api_base=platega_api_base,
         platega_payment_method=platega_payment_method,
+        platega_v2_universal=platega_v2_universal,
         platega_return_url=platega_return_url,
         platega_failed_url=platega_failed_url,
     )
