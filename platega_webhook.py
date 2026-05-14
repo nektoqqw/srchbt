@@ -136,6 +136,11 @@ async def platega_callback(request: web.Request) -> web.Response:
     return web.json_response({"ok": True})
 
 
+async def _on_startup(app: web.Application) -> None:
+    # ClientSession нельзя создавать в sync main() — в aiohttp 3.9+ нужен running loop.
+    app["http_session"] = ClientSession()
+
+
 async def _on_cleanup(app: web.Application) -> None:
     session: ClientSession = app["http_session"]
     await session.close()
@@ -160,7 +165,7 @@ def main() -> None:
     app = web.Application()
     app["settings"] = settings
     app["db"] = db
-    app["http_session"] = ClientSession()
+    app.on_startup.append(_on_startup)
     app.on_cleanup.append(_on_cleanup)
     app.router.add_post(path, platega_callback)
 
