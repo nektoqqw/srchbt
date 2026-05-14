@@ -50,7 +50,7 @@ from checker import (
 from channel_gate_aiogram import AiogramChannelGateMiddleware
 from config import Settings, load_settings
 from db import Database, SAVED_USERNAMES_LIMIT
-from referral_start import referrer_id_from_command
+from referral_start import platega_deep_link_from_start, referrer_id_from_command
 from admin_panel import (
     admin_clear_session,
     admin_handle_callback,
@@ -75,6 +75,7 @@ from platega_checkout import (
     show_luck_tariff_payment_screen,
     show_plus_tariff_payment_screen,
 )
+from platega_sync import finalize_pending_platega_for_user
 from plus_tariffs import (
     PLUS_TARIFFS,
     kb_plus_tariffs,
@@ -3274,6 +3275,9 @@ async def start_entry(
     assert message.from_user
     uid = message.from_user.id
     ref_uid = referrer_id_from_command(command, message.text)
+    platega_link = platega_deep_link_from_start(
+        getattr(command, "args", None), message.text
+    )
     if ref_uid is None:
         ref_uid = db.take_pending_referrer(uid)
     else:
@@ -3304,6 +3308,16 @@ async def start_entry(
         await cmd_start_frag(message, db, settings)
     else:
         await cmd_start_v2(message, db, settings)
+    if platega_link == "platega_ok":
+        try:
+            _, sync_msgs = await finalize_pending_platega_for_user(uid, db, settings)
+            if sync_msgs:
+                await message.answer(
+                    "\n".join(sync_msgs),
+                    parse_mode="HTML",
+                )
+        except Exception:
+            log.exception("Platega sync after start uid=%s", uid)
 
 
 async def on_text_router(

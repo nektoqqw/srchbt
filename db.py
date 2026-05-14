@@ -657,26 +657,63 @@ class Database:
                 "INSERT INTO dynamic_promo_uses (code, user_id) VALUES (?, ?)",
                 (c, user_id),
             )
-        return True, "ok", snap
+            if max_uses == 1:
+                cur.execute("DELETE FROM dynamic_promo_uses WHERE code = ?", (c,))
+                cur.execute("DELETE FROM dynamic_promos WHERE code = ?", (c,))
+            elif max_uses > 0:
+                cur.execute(
+                    "SELECT COUNT(*) FROM dynamic_promo_uses WHERE code = ?",
+                    (c,),
+                )
+                n_after = int(cur.fetchone()[0])
+                if n_after >= max_uses:
+                    cur.execute(
+                        "UPDATE dynamic_promos SET is_active = 0 WHERE code = ?",
+                        (c,),
+                    )
+            return True, "ok", snap
 
-    def dynamic_promo_list(
-        self, *, limit: int = 25
-    ) -> list[tuple[str, str, int, int, str, int | None, int | None, int | None]]:
-        """code, kind, max_uses, is_active, created_at, plus_days, plus_hours, luck_hours."""
+    def platega_pending_transaction_ids_for_user(
+        self, user_id: int, *, limit: int = 15
+    ) -> list[str]:
+        """Ожидающие оплаты заказы пользователя (для синхронизации после возврата из Platega)."""
+        lim = max(1, min(50, int(limit)))
         with self._cursor() as cur:
             cur.execute(
                 """
-                SELECT code, kind, max_uses, is_active, created_at,
-                       plus_days, plus_hours, luck_hours
-                FROM dynamic_promos
+                SELECT transaction_id FROM platega_orders
+                WHERE user_id = ? AND UPPER(TRIM(status)) = 'PENDING'
                 ORDER BY created_at DESC
+                LIMIT ?
+                """,
+                (user_id, lim),
+            )
+            return [str(r[0]).strip() for r in cur.fetchall() if str(r[0]).strip()]
+
+    def dynamic_promo_list(
+        self, *, limit: int = 25
+    ) -> list[
+        tuple[str, str, int, int, str, int | None, int | None, int | None, int]
+    ]:
+        """code, kind, max_uses, is_active, created_at, plus_days, plus_hours, luck_hours, uses_n."""
+        with self._cursor() as cur:
+            cur.execute(
+                """
+                SELECT d.code, d.kind, d.max_uses, d.is_active, d.created_at,
+                       d.plus_days, d.plus_hours, d.luck_hours,
+                       COALESCE(
+                           (SELECT COUNT(*) FROM dynamic_promo_uses u WHERE u.code = d.code),
+                           0
+                       ) AS uses_n
+                FROM dynamic_promos d
+                ORDER BY d.created_at DESC
                 LIMIT ?
                 """,
                 (limit,),
             )
             rows = cur.fetchall()
             out: list[
-                tuple[str, str, int, int, str, int | None, int | None, int | None]
+                tuple[str, str, int, int, str, int | None, int | None, int | None, int]
             ] = []
             for r in rows:
                 pd = r["plus_days"]
@@ -692,6 +729,7 @@ class Database:
                         None if pd is None else int(pd),
                         None if ph is None else int(ph),
                         None if lh is None else int(lh),
+                        int(r["uses_n"]),
                     )
                 )
             return out
@@ -1157,8 +1195,16 @@ class Database:
             if str(row["status"]).upper() != "PENDING":
                 return None
             if paid_amount is not None:
-                if abs(float(row["amount_rub"]) - float(paid_amount)) > 0.02:
-                    return None
+                exp = float(row["amount_rub"])
+                try:
+                    pa = float(paid_amount)
+                except (TypeError, ValueError):
+                    pa = None
+                if pa is not None:
+                    # В колбэке сумма может быть выше (комиссия «оплачивает клиент») —
+                    # не отклоняем. Отклоняем только если явно меньше ожидаемой (~скидка/ошибка).
+                    if pa + 1e-6 < exp * 0.95:
+                        return None
             cur.execute(
                 """
                 UPDATE platega_orders

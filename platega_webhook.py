@@ -25,6 +25,7 @@ from aiohttp.client import ClientSession
 from config import load_settings
 from db import Database
 from platega_apply import apply_platega_purchase
+from platega_sync import paid_amount_from_json, transaction_id_from_json, transaction_status_from_json
 
 log = logging.getLogger(__name__)
 
@@ -41,21 +42,15 @@ def _header(h: web.Request, name: str) -> str:
 
 
 def _tx_id(body: dict[str, Any]) -> str:
-    return str(body.get("id") or body.get("transactionId") or "").strip()
+    return transaction_id_from_json(body)
 
 
 def _status_upper(body: dict[str, Any]) -> str:
-    return str(body.get("status") or "").strip().upper()
+    return transaction_status_from_json(body)
 
 
 def _amount(body: dict[str, Any]) -> float | None:
-    raw = body.get("amount")
-    if raw is None:
-        return None
-    try:
-        return float(raw)
-    except (TypeError, ValueError):
-        return None
+    return paid_amount_from_json(body)
 
 
 async def _notify_user(
@@ -118,6 +113,8 @@ async def platega_callback(request: web.Request) -> web.Response:
 
     if st == "CONFIRMED":
         grant = db.platega_try_confirm(tx, amt)
+        if not grant:
+            grant = db.platega_try_confirm(tx, None)
         if grant:
             uid, kind, tkey = grant
             apply_platega_purchase(db, uid, kind, tkey)

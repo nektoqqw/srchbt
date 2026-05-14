@@ -89,3 +89,27 @@ def referrer_id_from_command(command: Any, message_text: str | None) -> int | No
     return referrer_id_for_start(
         command_args=getattr(command, "args", None), message_text=message_text
     )
+
+
+def platega_deep_link_from_start(
+    command_args: str | None, message_text: str | None
+) -> str | None:
+    """
+    Deep-link после оплаты Platega: /start platega_ok или platega_fail
+    (в т.ч. через base64 payload от Telegram).
+    """
+    seen: set[str] = set()
+    candidates: list[str] = []
+    a = (command_args or "").strip()
+    if a:
+        candidates.append(a)
+        seen.add(a)
+    b = start_arg_from_message_text(message_text) or ""
+    if b and b not in seen:
+        candidates.append(b)
+        seen.add(b)
+    for raw in candidates:
+        norm = _normalize_start_payload_token(raw).strip().lower()
+        if norm in ("platega_ok", "platega_fail"):
+            return norm
+    return None

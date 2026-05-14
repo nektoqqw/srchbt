@@ -37,7 +37,9 @@ def _promo_plus_period_ru(plus_days: int | None) -> str:
 
 
 def _promo_list_view(
-    rows: list[tuple[str, str, int, int, str, int | None, int | None, int | None]],
+    rows: list[
+        tuple[str, str, int, int, str, int | None, int | None, int | None, int]
+    ],
 ) -> tuple[str, InlineKeyboardMarkup]:
     header = "<b>📋 Промокоды</b>\n<code>════════</code>\n\n"
     if not rows:
@@ -49,10 +51,25 @@ def _promo_list_view(
         )
     lines: list[str] = []
     btn_rows: list[list[InlineKeyboardButton]] = []
-    for code, kind, max_u, active, created, plus_days, plus_hours, luck_hours in rows:
+    for (
+        code,
+        kind,
+        max_u,
+        active,
+        created,
+        plus_days,
+        plus_hours,
+        luck_hours,
+        uses_n,
+    ) in rows:
         st = "✅" if active else "⛔️"
         kind_ru = "PLUS" if kind == "plus" else "Удача"
-        lim = "∞" if max_u <= 0 else str(max_u)
+        if max_u <= 0:
+            lim_txt = "лимит ∞"
+            use_txt = f"активаций <code>{uses_n}</code>"
+        else:
+            lim_txt = f"лимит <code>{max_u}</code>"
+            use_txt = f"активаций <code>{uses_n}</code>/<code>{max_u}</code>"
         extra = ""
         if kind == "plus":
             if plus_hours is not None and plus_hours > 0:
@@ -62,7 +79,7 @@ def _promo_list_view(
         elif kind == "luck" and luck_hours is not None and luck_hours > 0:
             extra = f" · <i>+{luck_hours} ч</i>"
         lines.append(
-            f"{st} <code>{html.escape(code)}</code> · {kind_ru} · лимит {lim} · "
+            f"{st} <code>{html.escape(code)}</code> · {kind_ru} · {lim_txt} · {use_txt} · "
             f"<i>{html.escape(created)}</i>{extra}"
         )
         cb_data = f"adm:prm:{code}"
