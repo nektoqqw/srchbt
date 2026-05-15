@@ -9,7 +9,6 @@ from dataclasses import dataclass
 
 from fragment_scraper import random_letters_username_length
 from luck_username import random_free_lucky_username, random_lucky_username
-from username_cv import random_guest_username
 
 _LETTERS = string.ascii_lowercase
 _DIGITS = string.digits
@@ -55,15 +54,36 @@ def _random_middle(length: int, *, allow_digit: bool) -> str:
     return "".join(out)
 
 
+def _roll_matches_filters(cand: str, fl: RollFilters, length: int) -> bool:
+    """Полная строка подходит под нормализованные фильтры (длина, префикс/суффикс, цифры)."""
+    fl = fl.normalized(max_len=length)
+    if len(cand) != length:
+        return False
+    if cand[0] not in _LETTERS:
+        return False
+    if not re.fullmatch(rf"[a-z][a-z0-9_]{{{length - 1}}}", cand):
+        return False
+    if fl.prefix and not cand.startswith(fl.prefix):
+        return False
+    if fl.suffix and not cand.endswith(fl.suffix):
+        return False
+    if fl.digits == "yes" and not any(c in _DIGITS for c in cand):
+        return False
+    if fl.digits == "no" and any(c in _DIGITS for c in cand):
+        return False
+    return True
+
+
 def username_roll_random(length: int, *, lucky: bool, plus_full_cv: bool) -> str:
-    """PLUS: чередование CVC… и режим «Удача»; гость: случайные буквы без CV, при удаче — симметрия."""
+    """PLUS и гость: без «Удачи» — чередование CVC… (читаемо); с «Удачей» — палиндромы/края.
+
+    plus_full_cv оставлен для совместимости вызовов; раньше у гостя без удачи был «рваный» random.
+    """
     if lucky:
         if plus_full_cv:
             return random_lucky_username(length)
         return random_free_lucky_username(length)
-    if plus_full_cv:
-        return random_letters_username_length(length)
-    return random_guest_username(length)
+    return random_letters_username_length(length)
 
 
 def generate_roll_candidate(
@@ -74,9 +94,8 @@ def generate_roll_candidate(
     plus_full_cv: bool = True,
 ) -> str:
     """
-    Без фильтров: у PLUS — чередование CVC… и при удаче палиндромы/края (без удвоений);
-    у гостя — случайные буквы без CVCVC, при удаче чаще палиндром «край–край».
-    С фильтрами — строка a-z / a-z0-9_ (первая буква всегда буква).
+    Без фильтров: чередование CVC…; при удаче — палиндромы/края (гость и PLUS — одни «удачные» паттерны).
+    С фильтрами — строка a-z / a-z0-9_; при удаче сначала пробуем подходящие «красивые» строки.
     """
     fl = filters.normalized(max_len=length)
     if not fl.active():
@@ -89,6 +108,13 @@ def generate_roll_candidate(
 
     allow_digit = fl.digits != "no"
     need_digit = fl.digits == "yes"
+
+    # Удача + фильтры: не сводим к сырому random в середине — ищем полный ник из «удачной» генерации.
+    if lucky and core_len > 0:
+        for _ in range(220):
+            cand = username_roll_random(length, lucky=True, plus_full_cv=plus_full_cv)
+            if _roll_matches_filters(cand, fl, length):
+                return cand
 
     if core_len == 0:
         cand = pre + suf

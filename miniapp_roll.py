@@ -28,7 +28,7 @@ async def find_one_username_fragment_miniapp(
     on_progress: Callable[[int], Awaitable[None]] | None = None,
 ) -> tuple[str | None, int, bool]:
     """(username | None, attempts, timed_out)."""
-    lucky_effective = bool(lucky) and not filters.active()
+    lucky_effective = bool(lucky)
     retry_sleep = min(delay_s, 0.04) if delay_s > 0 else 0.0
     seen: set[str] = set()
     attempts = 0

@@ -1,21 +1,18 @@
 """
 Генерация и оценка «удачливых» ников на базе паттерна CVCVC… (согласная с нулевой позиции).
 
-PLUS + удача: палиндромы / края в духе «xanax», без соседних удвоений букв.
-Гость + удача: палиндром из случайных букв (первые две позиции задают зеркальный хвост).
+PLUS и гость с «Удачей»: палиндромы / края в духе «xanax», чередование CVC…; без сырого случайного набора букв.
 """
 
 from __future__ import annotations
 
 import random
-import string
 
 from username_cv import (
     _CONSONANTS,
     _VOWELS,
     cv_alternating_ok,
     random_cv_username,
-    random_guest_username,
 )
 
 
@@ -69,28 +66,6 @@ def _rnd_mirror_cv(n: int) -> str:
     return "".join(left + [mid] + left[::-1])
 
 
-def _rnd_scatter_palindrome(n: int) -> str:
-    """
-    Палиндром из случайных букв: первые ⌊n/2⌋ задают конец (зеркало), как xanax по структуре краёв.
-    Без паттерна CVCVC.
-    """
-    if n <= 0:
-        return ""
-    half = n // 2
-    letters = string.ascii_lowercase
-    left = "".join(random.choice(letters) for _ in range(half))
-    mid = random.choice(letters) if n % 2 else ""
-    s = left + mid + left[::-1]
-    if cv_alternating_ok(s):
-        for _ in range(40):
-            left = "".join(random.choice(letters) for _ in range(half))
-            mid = random.choice(letters) if n % 2 else ""
-            s = left + mid + left[::-1]
-            if not cv_alternating_ok(s):
-                break
-    return s
-
-
 def random_lucky_username(length: int) -> str:
     """PLUS + удача: палиндромы CV и «книжные» края; без удвоенных соседних букв."""
     if length < 5:
@@ -114,9 +89,5 @@ def random_lucky_username(length: int) -> str:
 
 
 def random_free_lucky_username(length: int) -> str:
-    """Гость + удача: при нечётной длине — палиндром без CVCVC; иначе случайное имя."""
-    if length < 3:
-        return random_guest_username(length)
-    if length % 2 == 1 and random.random() < 0.78:
-        return _rnd_scatter_palindrome(length)
-    return random_guest_username(length)
+    """Гость + удача: те же «красивые» паттерны, что и PLUS (раньше при чётной длине был сырой random)."""
+    return random_lucky_username(length)

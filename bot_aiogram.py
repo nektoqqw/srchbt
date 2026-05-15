@@ -1816,7 +1816,7 @@ async def _find_one_username_fragment(
     """Подбирает один ник. Третий элемент — True, если сработал лимит по времени (3 мин)."""
     import time
 
-    lucky_effective = bool(lucky) and not filters.active()
+    lucky_effective = bool(lucky)
     retry_sleep = min(delay_s, 0.04) if delay_s > 0 else 0.0
 
     seen: set[str] = set()
