@@ -43,9 +43,21 @@ def _parse_usernames(text: str) -> list[str]:
 
 
 def _build_checker(settings: Settings) -> Any:
-    from bot_aiogram import build_checker
+    """Отдельная Telethon-сессия (TELETHON_SESSION_MINIAPP), не та же что у бота."""
+    from checker import build_telethon_checker
 
-    return build_checker(settings)
+    return build_telethon_checker(settings, session_name=settings.telethon_session_miniapp)
+
+
+async def shutdown_miniapp_checker() -> None:
+    global _checker
+    async with _checker_lock:
+        if _checker is not None and getattr(_checker, "uses_telethon", False):
+            try:
+                await _checker.stop()
+            except Exception:
+                log.debug("miniapp checker stop", exc_info=True)
+        _checker = None
 
 
 @dataclass

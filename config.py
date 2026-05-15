@@ -43,6 +43,8 @@ class Settings:
     api_id: int
     api_hash: str
     telethon_session: str
+    # Отдельный .session для platega_webhook / Mini App (второй аккаунт Telegram)
+    telethon_session_miniapp: str
     plus_promo_code: str
     luck_promo_code: str
     admin_ids: set[int]
@@ -110,6 +112,9 @@ def load_settings() -> Settings:
         raise RuntimeError("BOT_MODE=telethon: укажите TELEGRAM_API_ID и TELEGRAM_API_HASH (my.telegram.org)")
 
     session = os.environ.get("TELETHON_SESSION_NAME", "username_checker").strip()
+    session_miniapp = (os.environ.get("TELETHON_SESSION_MINIAPP") or "").strip()
+    if not session_miniapp:
+        session_miniapp = f"{session}_miniapp"
     promo = os.environ.get("PLUS_PROMO_CODE", "DEMOPLUS2026").strip()
     luck_promo = os.environ.get("LUCK_PROMO_CODE", "").strip()
     admins = _parse_admin_ids(os.environ.get("ADMIN_IDS"))
@@ -241,6 +246,7 @@ def load_settings() -> Settings:
         api_id=api_id_int,
         api_hash=api_hash_val,
         telethon_session=session,
+        telethon_session_miniapp=session_miniapp,
         plus_promo_code=promo.upper(),
         luck_promo_code=luck_promo.upper(),
         admin_ids=admins,

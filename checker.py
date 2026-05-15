@@ -10,6 +10,7 @@ import asyncio
 import logging
 import random
 import re
+import sqlite3
 import string
 from typing import ClassVar
 
@@ -23,6 +24,7 @@ from telethon.network.connection import (
 )
 from telethon.tl.functions.account import CheckUsernameRequest
 
+from config import Settings
 from username_cv import random_cv_username
 
 log = logging.getLogger(__name__)
@@ -105,17 +107,34 @@ class UsernameChecker:
     async def start(self) -> None:
         if self._started:
             return
-        try:
-            assert self._client is not None
-            await self._client.connect()
-        except (OSError, ConnectionError, ConnectionResetError, EOFError):
-            raise
-
-        assert self._client is not None
-        if not await self._client.is_user_authorized():
-            await self._client.start()
-        self._started = True
-        log.info("Telethon: подключено и авторизовано")
+        last_err: BaseException | None = None
+        for attempt in range(6):
+            try:
+                assert self._client is not None
+                await self._client.connect()
+                if not await self._client.is_user_authorized():
+                    await self._client.start()
+                self._started = True
+                log.info("Telethon: подключено и авторизовано")
+                return
+            except sqlite3.OperationalError as e:
+                last_err = e
+                if "locked" not in str(e).lower():
+                    raise
+                log.warning(
+                    "Telethon session locked (попытка %s/6) — ждём…",
+                    attempt + 1,
+                )
+                try:
+                    if self._client is not None and self._client.is_connected():
+                        await self._client.disconnect()
+                except Exception:
+                    pass
+                await asyncio.sleep(1.5 + attempt * 0.5)
+            except (OSError, ConnectionError, ConnectionResetError, EOFError):
+                raise
+        if last_err is not None:
+            raise last_err
 
     async def stop(self) -> None:
         if self._client is not None:
@@ -155,6 +174,30 @@ class UsernameChecker:
             if self._delay > 0:
                 await asyncio.sleep(self._delay)
             return out
+
+
+def build_telethon_checker(
+    settings: Settings,
+    *,
+    session_name: str | None = None,
+) -> UsernameChecker | DisabledUsernameChecker:
+    """Сборка checker; session_name — иначе settings.telethon_session (бот)."""
+    if settings.username_check_mode == "disabled":
+        return DisabledUsernameChecker()
+    if not settings.api_id or not settings.api_hash:
+        return DisabledUsernameChecker()
+    session = (session_name or settings.telethon_session).strip()
+    if not session:
+        return DisabledUsernameChecker()
+    return UsernameChecker(
+        settings.api_id,
+        settings.api_hash,
+        session,
+        delay_between_checks=settings.telethon_check_delay_s,
+        timeout=settings.telethon_timeout,
+        connection_retries=settings.telethon_connection_retries,
+        connection=telethon_connection_class(settings.telethon_connection),
+    )
 
 
 class DisabledUsernameChecker:

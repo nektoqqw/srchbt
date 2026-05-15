@@ -157,6 +157,12 @@ async def _on_startup(app: web.Application) -> None:
 
 
 async def _on_cleanup(app: web.Application) -> None:
+    try:
+        from miniapp_services import shutdown_miniapp_checker
+
+        await shutdown_miniapp_checker()
+    except Exception:
+        log.debug("miniapp checker cleanup", exc_info=True)
     session: ClientSession | None = app.get("http_session")
     if session is not None and not session.closed:
         await session.close()

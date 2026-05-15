@@ -42,13 +42,13 @@ from aiogram.types import (
 from aiogram.types.error_event import ErrorEvent
 
 from checker import (
+    build_telethon_checker,
     DisabledUsernameChecker,
     UsernameChecker,
     is_valid_telegram_username,
     is_valid_telegram_username_for_roll,
     normalize_username,
     random_letters_username,
-    telethon_connection_class,
 )
 from channel_gate_aiogram import AiogramChannelGateMiddleware
 from config import Settings, load_settings
@@ -1771,19 +1771,7 @@ def _rarity_for_display(username: str, db: Database, ton_to_usd: float):
 
 
 def build_checker(settings: Settings) -> UsernameChecker | DisabledUsernameChecker:
-    if settings.username_check_mode == "disabled":
-        return DisabledUsernameChecker()
-    if not settings.api_id or not settings.api_hash:
-        return DisabledUsernameChecker()
-    return UsernameChecker(
-        settings.api_id,
-        settings.api_hash,
-        settings.telethon_session,
-        delay_between_checks=settings.telethon_check_delay_s,
-        timeout=settings.telethon_timeout,
-        connection_retries=settings.telethon_connection_retries,
-        connection=telethon_connection_class(settings.telethon_connection),
-    )
+    return build_telethon_checker(settings)
 
 
 def create_bot(settings: Settings) -> Bot:
