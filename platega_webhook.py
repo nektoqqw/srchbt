@@ -29,8 +29,11 @@ from platega_sync import paid_amount_from_json, transaction_id_from_json, transa
 
 try:
     from miniapp_api import setup_miniapp_routes
-except ImportError:
+except ImportError as _miniapp_import_err:
     setup_miniapp_routes = None  # type: ignore
+    _MINIAPP_IMPORT_ERROR: str | None = str(_miniapp_import_err)
+else:
+    _MINIAPP_IMPORT_ERROR = None
 
 log = logging.getLogger(__name__)
 
@@ -158,6 +161,20 @@ async def _on_cleanup(app: web.Application) -> None:
     await session.close()
 
 
+async def _health(request: web.Request) -> web.Response:
+    """Проверка без nginx: curl http://127.0.0.1:8080/health"""
+    miniapp_ok = setup_miniapp_routes is not None
+    err = request.app.get("miniapp_import_error")
+    return web.json_response(
+        {
+            "ok": True,
+            "platega_callback": True,
+            "miniapp_routes": miniapp_ok,
+            "miniapp_import_error": err,
+        }
+    )
+
+
 def main() -> None:
     logging.basicConfig(
         level=logging.INFO,
@@ -186,10 +203,17 @@ def main() -> None:
         log.warning("Aiogram Bot недоступен — проверка канала в Mini App отключена")
     app.on_startup.append(_on_startup)
     app.on_cleanup.append(_on_cleanup)
+    app.router.add_get("/health", _health)
+    app["miniapp_import_error"] = _MINIAPP_IMPORT_ERROR
     app.router.add_post(path, platega_callback)
     if setup_miniapp_routes is not None:
         setup_miniapp_routes(app)
         log.info("Mini App: маршруты /app и /api подключены")
+    else:
+        log.error(
+            "Mini App НЕ подключён (будет 404 на /app). Причина: %s",
+            _MINIAPP_IMPORT_ERROR or "unknown",
+        )
 
     host = (os.environ.get("PLATEGA_WEBHOOK_HOST") or "0.0.0.0").strip()
     try:

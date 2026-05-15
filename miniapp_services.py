@@ -21,20 +21,30 @@ from checker import is_valid_telegram_username, normalize_username
 from config import Settings
 from db import Database
 from fragment_scraper import username_listed_on_fragment
-from luck_tariffs import LUCK_TARIFFS, luck_tariff_by_key, luck_shop_intro_html
+from luck_tariffs import LUCK_TARIFFS, luck_tariff_by_key
 from miniapp_roll import find_one_username_fragment_miniapp
 from platega_api import create_platega_transaction, platega_configured
 from platega_checkout import _pay_url_from_response, _tx_id_from_response
 from platega_sync import finalize_pending_platega_for_user
-from plus_tariffs import PLUS_TARIFFS, plus_tariff_by_key, plus_shop_intro_html
+from plus_tariffs import PLUS_TARIFFS, plus_tariff_by_key
 from roll_filters import RollFilters, filters_summary_ru
 from tariff_pricing import sale_price_float, sale_price_rub
 from username_rarity import combined_rarity
 from username_valuation import evaluate_username_market
 
-from bot_aiogram import build_checker, parse_usernames_from_user_input
-
 log = logging.getLogger(__name__)
+
+
+def _parse_usernames(text: str) -> list[str]:
+    from bot_aiogram import parse_usernames_from_user_input
+
+    return parse_usernames_from_user_input(text)
+
+
+def _build_checker(settings: Settings) -> Any:
+    from bot_aiogram import build_checker
+
+    return build_checker(settings)
 
 
 @dataclass
@@ -64,7 +74,7 @@ async def get_checker(settings: Settings) -> Any:
     global _checker
     async with _checker_lock:
         if _checker is None:
-            _checker = build_checker(settings)
+            _checker = _build_checker(settings)
             if getattr(_checker, "uses_telethon", False):
                 await _checker.start()
         return _checker
@@ -332,7 +342,7 @@ def toggle_luck_pause(db: Database, uid: int) -> dict[str, Any]:
 async def run_valuation(
     db: Database, settings: Settings, uid: int, raw: str, checker: Any
 ) -> dict[str, Any]:
-    tokens = parse_usernames_from_user_input(raw)
+    tokens = _parse_usernames(raw)
     if not tokens:
         return {"ok": False, "error": "no_usernames"}
 
