@@ -14,8 +14,6 @@ import asyncio
 import logging
 import sys
 
-import ui_theme as theme
-
 from telegram import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
@@ -50,9 +48,9 @@ from fragment_scraper import collect_usernames_not_on_fragment
 
 # --- Константы UI ---
 BTN_SEARCH = "🔎 Искать ник"
-BTN_CABINET = f"{theme.CABINET} Личный кабинет"
-BTN_SUPPORT = f"{theme.SUPPORT} Поддержка"
-BTN_PLUS = f"{theme.PLUS} Подписка PLUS"
+BTN_CABINET = "👤 Личный кабинет"
+BTN_SUPPORT = "💬 Поддержка"
+BTN_PLUS = "⭐ Подписка PLUS"
 
 # Сообщения без «/» не считаются командами в Telegram — дублируем /start текстом.
 _TEXT_START_ALIASES = frozenset({"старт", "start", "начать"})
@@ -101,7 +99,7 @@ def format_cabinet_text(db: Database, user_id: int, settings: Settings) -> str:
     lines = [
         "<b>Личный кабинет</b>",
         "",
-        f"Подписка: {'<b>PLUS</b> {theme.OK}' if u.is_plus else 'Бесплатная'}",
+        f"Подписка: {'<b>PLUS</b> ✅' if u.is_plus else 'Бесплатная'}",
     ]
     if rem is None:
         lines.append("Поиски: безлимит")
@@ -153,7 +151,7 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if code == settings.plus_promo_code:
             db.set_plus(uid, True)
             await update.message.reply_html(
-                f"{theme.OK} Подписка <b>PLUS</b> активирована!\n"
+                "✅ Подписка <b>PLUS</b> активирована!\n"
                 "Доступны безлимитный поиск и сохранение имён.",
                 reply_markup=main_menu_keyboard(),
             )
@@ -264,9 +262,9 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             context.bot, settings.required_channel_username, uid
         )
         if ok:
-            await q.answer(f"{theme.OK} Подписка подтверждена!")
+            await q.answer("✅ Подписка подтверждена!")
             await q.message.reply_html(
-                f"<b>{theme.OK} Канал подписан.</b> Дальше — кнопки меню или <code>/start</code>.",
+                "<b>✅ Канал подписан.</b> Дальше — кнопки меню или <code>/start</code>.",
                 reply_markup=main_menu_keyboard(),
             )
         else:
@@ -358,7 +356,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             return
         res = db.save_username(uid, name)
         if res == "saved":
-            await q.message.reply_text(f"{theme.OK} Юзернейм сохранён!")
+            await q.message.reply_text("✅ Юзернейм сохранён!")
         elif res == "duplicate":
             await q.message.reply_text("Этот ник уже в списке.")
         elif res == "limit":

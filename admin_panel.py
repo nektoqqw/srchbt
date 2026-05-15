@@ -18,8 +18,6 @@ from config import Settings
 from db import Database
 from plus_tariffs import PLUS_TARIFFS, plus_tariff_by_key
 
-import ui_theme as theme
-
 log = logging.getLogger(__name__)
 
 ADMIN_SESS_PROMO = "admin_promo_expect"
@@ -39,9 +37,7 @@ def _promo_plus_period_ru(plus_days: int | None) -> str:
 
 
 def _promo_list_view(
-    rows: list[
-        tuple[str, str, int, int, str, int | None, int | None, int | None, int]
-    ],
+    rows: list[tuple[str, str, int, int, str, int | None, int | None, int | None]],
 ) -> tuple[str, InlineKeyboardMarkup]:
     header = "<b>📋 Промокоды</b>\n<code>════════</code>\n\n"
     if not rows:
@@ -53,25 +49,10 @@ def _promo_list_view(
         )
     lines: list[str] = []
     btn_rows: list[list[InlineKeyboardButton]] = []
-    for (
-        code,
-        kind,
-        max_u,
-        active,
-        created,
-        plus_days,
-        plus_hours,
-        luck_hours,
-        uses_n,
-    ) in rows:
-        st = theme.OK if active else theme.FAIL
+    for code, kind, max_u, active, created, plus_days, plus_hours, luck_hours in rows:
+        st = "✅" if active else "⛔️"
         kind_ru = "PLUS" if kind == "plus" else "Удача"
-        if max_u <= 0:
-            lim_txt = "лимит ∞"
-            use_txt = f"активаций <code>{uses_n}</code>"
-        else:
-            lim_txt = f"лимит <code>{max_u}</code>"
-            use_txt = f"активаций <code>{uses_n}</code>/<code>{max_u}</code>"
+        lim = "∞" if max_u <= 0 else str(max_u)
         extra = ""
         if kind == "plus":
             if plus_hours is not None and plus_hours > 0:
@@ -81,7 +62,7 @@ def _promo_list_view(
         elif kind == "luck" and luck_hours is not None and luck_hours > 0:
             extra = f" · <i>+{luck_hours} ч</i>"
         lines.append(
-            f"{st} <code>{html.escape(code)}</code> · {kind_ru} · {lim_txt} · {use_txt} · "
+            f"{st} <code>{html.escape(code)}</code> · {kind_ru} · лимит {lim} · "
             f"<i>{html.escape(created)}</i>{extra}"
         )
         cb_data = f"adm:prm:{code}"
@@ -151,7 +132,7 @@ def admin_docs_menu_html(db: Database) -> str:
     t = db.get_legal_document_url("terms")
     p = db.get_legal_document_url("privacy")
     return (
-        f"<blockquote><b>{theme.DOCS} Документы</b></blockquote>\n"
+        "<blockquote><b>📄 Документы</b></blockquote>\n"
         "<code>════════════</code>\n\n"
         "<b>• Пользовательское соглашение</b>\n"
         f"{_doc_url_preview(t)}\n\n"
@@ -192,7 +173,7 @@ def kb_admin_root(db: Database) -> InlineKeyboardMarkup:
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text=f"{theme.CHART} PLUS по дням",
+                    text="✨ PLUS по дням",
                     callback_data="adm:ppm",
                 ),
             ],
@@ -204,7 +185,7 @@ def kb_admin_root(db: Database) -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton(
-                    text=f"{theme.LUCK} Удача",
+                    text="🍀 Удача",
                     callback_data="adm:pl",
                 ),
             ],
@@ -231,7 +212,7 @@ def kb_admin_root(db: Database) -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton(
-                    text=f"{theme.DOCS} Документы",
+                    text="📄 Документы",
                     callback_data="adm:docs",
                 ),
             ],
@@ -321,7 +302,7 @@ async def admin_handle_callback(
             rows.append(row)
         rows.append([InlineKeyboardButton(text="« Пульт", callback_data="adm:home")])
         await cb.message.edit_text(
-            f"<b>{theme.CHART} Промокод PLUS по дням</b>\n<code>────────</code>\n\n"
+            "<b>✨ Промокод PLUS по дням</b>\n<code>────────</code>\n\n"
             "Выберите <b>срок</b> как в витрине тарифов.\n\n"
             "<b>PLUS на часы</b> — отдельная кнопка на главном экране пульта "
             "(<code>⏱ PLUS на часы</code>).\n\n"
@@ -340,7 +321,7 @@ async def admin_handle_callback(
         sess_uid.pop(ADMIN_SESS_DOC, None)
         sess_uid[ADMIN_SESS_PROMO] = "plus_by_hours"
         await cb.message.edit_text(
-            f"<b>{theme.CHART} Промокод PLUS на часы</b>\n<code>────────</code>\n\n"
+            "<b>✨ Промокод PLUS на часы</b>\n<code>────────</code>\n\n"
             "Одним сообщением пришлите <b>три поля через пробел</b>:\n"
             "<code>КОД ЛИМИТ ЧАСЫ</code>\n\n"
             "• <b>КОД</b> — латиница и цифры, 3–40 символов\n"
@@ -376,7 +357,7 @@ async def admin_handle_callback(
             else f"<b>{html.escape(tar.title_ru)}</b> ({tar.days} дн.)"
         )
         await cb.message.edit_text(
-            f"<b>{theme.CHART} Промокод PLUS</b>\n<code>────────</code>\n\n"
+            "<b>✨ Промокод PLUS</b>\n<code>────────</code>\n\n"
             f"<b>Срок по коду:</b> {period}\n\n"
             "Одним сообщением пришлите строку вида:\n"
             "<code>КОД ЛИМИТ</code>\n\n"
@@ -401,7 +382,7 @@ async def admin_handle_callback(
         admin_clear_session(sess_uid)
         sess_uid[ADMIN_SESS_PROMO] = "luck"
         await cb.message.edit_text(
-            f"<b>{theme.LUCK} Новый промокод Удача</b>\n<code>────────</code>\n\n"
+            "<b>🍀 Новый промокод Удача</b>\n<code>────────</code>\n\n"
             "<b>Вариант 1 — без таймера</b> (как раньше), два поля:\n"
             "<code>КОД ЛИМИТ</code>\n\n"
             "<b>Вариант 2 — на часы</b>, три поля:\n"
@@ -439,7 +420,7 @@ async def admin_handle_callback(
                     ],
                     [
                         InlineKeyboardButton(
-                            text=f"{theme.PLUS} Только с PLUS",
+                            text="♠️ Только с PLUS",
                             callback_data="adm:bc:set:plus",
                         ),
                     ],
@@ -502,7 +483,7 @@ async def admin_handle_callback(
                     ],
                     [
                         InlineKeyboardButton(
-                            text=f"{theme.PLUS} Только PLUS",
+                            text="♠️ Только PLUS",
                             callback_data="adm:usr:p:0",
                         ),
                     ],
@@ -532,14 +513,14 @@ async def admin_handle_callback(
             if offset > 0:
                 nav.append(
                     InlineKeyboardButton(
-                        text=f"{theme.PURPLE_ALT} Назад",
+                        text="◀ Назад",
                         callback_data=f"adm:usr:{mode}:{max(0, offset - USER_PAGE)}",
                     )
                 )
             if offset + len(ids) < total:
                 nav.append(
                     InlineKeyboardButton(
-                        text=f"Вперёд {theme.GREEN_LEAF}",
+                        text="Вперёд ▶",
                         callback_data=f"adm:usr:{mode}:{offset + len(ids)}",
                     )
                 )
@@ -608,7 +589,7 @@ async def admin_handle_callback(
                 inline_keyboard=[
                     [
                         InlineKeyboardButton(
-                            text=f"{theme.FAIL} Убрать ссылку",
+                            text="⛔️ Убрать ссылку",
                             callback_data=f"adm:doc:clr:{kind}",
                         )
                     ],
@@ -943,11 +924,11 @@ def legal_documents_user_html(db: Database) -> str:
     p = db.get_legal_document_url("privacy")
     if not t and not p:
         return (
-            f"<b>{theme.DOCS} Документы</b>\n<code>────────</code>\n\n"
+            "<b>📄 Документы</b>\n<code>────────</code>\n\n"
             "<i>Ссылки ещё не добавлены. Если нужны юридические тексты — напишите в поддержку.</i>"
         )
     lines = [
-        f"<b>{theme.DOCS} Документы</b>",
+        "<b>📄 Документы</b>",
         "<code>────────</code>",
         "",
     ]
