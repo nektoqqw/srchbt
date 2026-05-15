@@ -9,6 +9,8 @@ from zoneinfo import ZoneInfo
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
+import ui_theme as theme
+
 from tariff_pricing import TARIFF_DISCOUNT_PERCENT, sale_price_rub, tariff_payment_price_line_html
 
 
@@ -55,7 +57,7 @@ def kb_luck_tariffs() -> InlineKeyboardMarkup:
     rows.append(
         [
             InlineKeyboardButton(
-                text="🗝 У меня есть промокод",
+                text=f"{theme.PURPLE_ALT} У меня есть промокод",
                 callback_data="luck:enter",
             )
         ]
@@ -90,21 +92,21 @@ def luck_subscriber_status_banner_html(
         return ""
     if int(luck_forever):
         return (
-            "✅ Режим <b>«Удача»</b> уже активен <b>без срока окончания</b>.\n"
+            f"{theme.OK} Режим <b>«Удача»</b> уже активен <b>без срока окончания</b>.\n"
             "<i>Ниже можно оформить ещё тариф — время прибавится к сроку.</i>\n\n"
         )
     if luck_expires_at:
         when = format_luck_expires_human_ru(luck_expires_at)
         return (
-            f"✅ <b>«Удача»</b> активирована до <b>{html_escape(when)}</b>.\n"
+            f"{theme.OK} <b>«Удача»</b> активирована до <b>{html_escape(when)}</b>.\n"
             "<i>Новый тариф продлит срок после оплаты.</i>\n\n"
         )
-    return "✅ Режим <b>«Удача»</b> активен.\n\n"
+    return f"{theme.OK} Режим <b>«Удача»</b> активен.\n\n"
 
 
 def luck_shop_intro_html() -> str:
     return (
-        "<b>🍀 Режим «Удача»</b>\n\n"
+        f"<b>{theme.LUCK} Режим «Удача»</b>\n\n"
         f"<b>Скидка {TARIFF_DISCOUNT_PERCENT}%</b> на все тарифы ниже — в кнопках цена со скидкой.\n\n"
         "<i>Тарифы ниже — только при активной подписке <b>PLUS</b>.</i>\n\n"
         "При подборе из каталога чаще всплывают <b>симметричные и «удачные»</b> "
@@ -128,13 +130,13 @@ def kb_luck_payment_nav(*, pay_url: str | None = None) -> InlineKeyboardMarkup:
         [
             [
                 InlineKeyboardButton(
-                    text="◀ Все тарифы удачи",
+                    text=f"{theme.PURPLE_ALT} Все тарифы удачи",
                     callback_data="luck:shop",
                 )
             ],
             [
                 InlineKeyboardButton(
-                    text="🗝 Ввести промокод",
+                    text=f"{theme.PURPLE_ALT} Ввести промокод",
                     callback_data="luck:enter",
                 )
             ],
@@ -162,7 +164,7 @@ def luck_tariff_payment_html(
             "(обычно в течение минуты).</i>"
         )
     return (
-        f"<b>🍀 Оплата «Удача»</b>\n\n"
+        f"<b>{theme.LUCK} Оплата «Удача»</b>\n\n"
         f"{status_banner}"
         f"Тариф: <b>{html_escape(t.title_ru)}</b>\n"
         f"Срок: {period}\n"

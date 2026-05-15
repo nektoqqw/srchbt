@@ -491,9 +491,9 @@ def _kb_frag_filters_panel(uid: int) -> InlineKeyboardMarkup:
 def kb_fragment_lengths(*, uid: int, db: Database) -> InlineKeyboardMarkup:
     rows: list[list[InlineKeyboardButton]] = [
         [
-            InlineKeyboardButton(text="🔹 5", callback_data="frag:len:5"),
-            InlineKeyboardButton(text="🔹 6", callback_data="frag:len:6"),
-            InlineKeyboardButton(text="🔹 7", callback_data="frag:len:7"),
+            InlineKeyboardButton(text=f"{theme.PURPLE_ALT} 5", callback_data="frag:len:5"),
+            InlineKeyboardButton(text=f"{theme.PURPLE_ALT} 6", callback_data="frag:len:6"),
+            InlineKeyboardButton(text=f"{theme.PURPLE_ALT} 7", callback_data="frag:len:7"),
         ],
     ]
     if db.is_plus(uid):
@@ -572,18 +572,18 @@ def kb_v2_cabinet() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="🍀 Тарифы «Удача»",
+                    text=f"{theme.LUCK} Тарифы «Удача»",
                     callback_data="luck:shop",
                 )
             ],
             [
                 InlineKeyboardButton(
-                    text="📂 Сохранённые ники", callback_data="cab:saved"
+                    text=f"{theme.GREEN} Сохранённые ники", callback_data="cab:saved"
                 )
             ],
             [
                 InlineKeyboardButton(
-                    text="◀ В меню", callback_data="cab:back"
+                    text=f"{theme.PURPLE_ALT} В меню", callback_data="cab:back"
                 )
             ],
         ]
@@ -595,32 +595,32 @@ def kb_v2_rarity() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="💎 От $1 000",
+                    text=f"{theme.CHART} От $1 000",
                     callback_data="roll:tier:super"
                 ),
             ],
             [
                 InlineKeyboardButton(
-                    text="🥇 От $500", callback_data="roll:tier:legendary"
+                    text=f"{theme.PURPLE_ALT} От $500", callback_data="roll:tier:legendary"
                 ),
                 InlineKeyboardButton(
-                    text="🥈 От $150", callback_data="roll:tier:mythic"
-                ),
-            ],
-            [
-                InlineKeyboardButton(
-                    text="🥉 От $50", callback_data="roll:tier:epic"
-                ),
-                InlineKeyboardButton(
-                    text="🔸 От $10", callback_data="roll:tier:rare"
+                    text=f"{theme.PURPLE} От $150", callback_data="roll:tier:mythic"
                 ),
             ],
             [
                 InlineKeyboardButton(
-                    text="✨ По умолчанию", callback_data="roll:tier:common"
+                    text=f"{theme.GREEN} От $50", callback_data="roll:tier:epic"
                 ),
                 InlineKeyboardButton(
-                    text="🌊 Все лоты", callback_data="roll:tier:any"
+                    text=f"{theme.PURPLE_ALT} От $10", callback_data="roll:tier:rare"
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text=f"{theme.PURPLE_ALT} По умолчанию", callback_data="roll:tier:common"
+                ),
+                InlineKeyboardButton(
+                    text=f"{theme.GREEN} Все лоты", callback_data="roll:tier:any"
                 ),
             ],
         ]
@@ -631,8 +631,8 @@ def kb_v2_lengths() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="🔹 5 символов", callback_data="roll:len:5"),
-                InlineKeyboardButton(text="🔹 6 символов", callback_data="roll:len:6"),
+                InlineKeyboardButton(text=f"{theme.PURPLE_ALT} 5 символов", callback_data="roll:len:5"),
+                InlineKeyboardButton(text=f"{theme.PURPLE_ALT} 6 символов", callback_data="roll:len:6"),
             ],
             [
                 InlineKeyboardButton(
@@ -646,20 +646,20 @@ def kb_v2_lengths() -> InlineKeyboardMarkup:
 
 def _roll_pick_intro_html() -> str:
     return (
-        f"✨ <b>{html.escape(AMNYAM)}</b> крутит для вас <code>@username</code>\n"
+        f"{theme.PURPLE} <b>{html.escape(AMNYAM)}</b> крутит для вас <code>@username</code>\n"
         f"{ROLL_RULE_LINE_HTML}\n\n"
-        "🔤 <b>Сколько символов в @нике?</b>\n"
+        f"{theme.GREEN} <b>Сколько символов в @нике?</b>\n"
         "<i>Латиница <code>a–z</code> — жми кнопку ниже 👇</i>"
     )
 
 
 def _roll_tier_pick_html() -> str:
     return (
-        f"✨ <b>{html.escape(AMNYAM)}</b> крутит <code>@username</code>\n"
+        f"{theme.PURPLE} <b>{html.escape(AMNYAM)}</b> крутит <code>@username</code>\n"
         f"{ROLL_RULE_LINE_HTML}\n\n"
-        "🎛 <b>Настройки крутки</b>\n\n"
-        "💵 <b>От какой оценки крутить?</b> <i>(USD)</i>\n"
-        "<i>✨ По умолчанию — спокойный старт; 🌊 Все лоты — без нижнего порога.</i>"
+        f"{theme.PURPLE_ALT} <b>Настройки крутки</b>\n\n"
+        f"{theme.GREEN} <b>От какой оценки крутить?</b> <i>(USD)</i>\n"
+        f"<i>{theme.PURPLE_ALT} По умолчанию — спокойный старт; {theme.GREEN} Все лоты — без нижнего порога.</i>"
     )
 
 
@@ -762,7 +762,7 @@ def _repeat_snapshot_html(cb: CallbackQuery) -> str:
     raw = getattr(m, "html_text", None) or m.text or ""
     raw = (raw or "").strip()
     if not raw:
-        return f"✨ <b>{html.escape(AMNYAM)}</b>\n<i>Предыдущий результат крутки.</i>"
+        return f"{theme.PURPLE} <b>{html.escape(AMNYAM)}</b>\n<i>Предыдущий результат крутки.</i>"
     if len(raw) > 3500:
         return raw[:3500] + "\n\n<i>…</i>"
     return raw
@@ -831,7 +831,7 @@ async def _handle_roll_repeat_start(
             else kb_roll_repeat_ready(uname, is_plus=is_plus)
         )
         await cb.message.edit_text(
-            "✨ <b>Можно крутить снова!</b>\n\n<i>Нажмите кнопку ниже.</i>",
+            f"{theme.PURPLE} <b>Можно крутить снова!</b>\n\n<i>Нажмите кнопку ниже.</i>",
             parse_mode="HTML",
             reply_markup=kb,
         )
@@ -1113,7 +1113,7 @@ def _luck_menu_inline_kb(uid: int, db: Database, settings: Settings) -> InlineKe
         rows.append(
             [
                 InlineKeyboardButton(
-                    text="▶ Снова в подборе" if paused else "⏸ Пауза в подборе",
+                    text=f"{theme.OK} Снова в подборе" if paused else f"{theme.WARN} Пауза в подборе",
                     callback_data="luck:toggle",
                 )
             ]
@@ -1121,7 +1121,7 @@ def _luck_menu_inline_kb(uid: int, db: Database, settings: Settings) -> InlineKe
     rows.append(
         [
             InlineKeyboardButton(
-                text="💳 Тарифы «Удача»",
+                    text=f"{theme.LINK} Тарифы «Удача»",
                 callback_data="luck:shop",
             )
         ]
@@ -1130,7 +1130,7 @@ def _luck_menu_inline_kb(uid: int, db: Database, settings: Settings) -> InlineKe
         rows.append(
             [
                 InlineKeyboardButton(
-                    text="🗝 Промокод",
+                    text=f"{theme.PURPLE_ALT} Промокод",
                     callback_data="luck:enter",
                 )
             ]
@@ -1142,7 +1142,7 @@ def _luck_menu_html(uid: int, db: Database, roll_btn: str) -> str:
     u = db.get_or_create_user(uid)
     luck_status = _luck_cabinet_line(u, db, uid)
     return (
-        "<b>🍀 Режим «Удача»</b>\n\n"
+        f"<b>{theme.LUCK} Режим «Удача»</b>\n\n"
         f"{luck_status}\n\n"
         "В подборе из каталога чаще всплывают симметричные и удачные сочетания "
         f"при той же цене — учитывается в «{html.escape(roll_btn)}».\n\n"
@@ -1183,12 +1183,12 @@ def _roll_result_card_html(
     has_luck: bool,
 ) -> str:
     tail = (
-        "\n\n<i>🍀 Учтён режим «Удача»: приоритет удачных комбинаций.</i>"
+        f"\n\n<i>{theme.LUCK} Учтён режим «Удача»: приоритет удачных комбинаций.</i>"
         if has_luck
         else ""
     )
     return (
-        f"🌟 <b>{html.escape(AMNYAM)}</b> подобрал для вас юзернейм…\n"
+        f"{theme.FOUND} <b>{html.escape(AMNYAM)}</b> подобрал для вас юзернейм…\n"
         f"{_format_username(uname)}\n"
         "<code>──────────</code>\n\n"
         + _rarity_metrics_html(
@@ -1303,7 +1303,7 @@ def _valuation_block_html(
     )
     pros_txt = "\n".join(f"• {html.escape(p)}" for p in report.pros) or "• —"
     cons_txt = "\n".join(f"• {html.escape(c)}" for c in report.cons) or "• —"
-    stars = "⭐" * report.stars_5 + "☆" * (5 - report.stars_5)
+    stars = f"{theme.GREEN}" * report.stars_5 + f"{theme.PURPLE_ALT}" * (5 - report.stars_5)
     lines: list[str] = []
     if title_line:
         lines += [title_line, "<code>──────────</code>", ""]
@@ -1485,11 +1485,11 @@ async def cabinet_text_frag(db: Database, uid: int, settings: Settings) -> str:
                     when = loc.strftime("%d.%m.%Y %H:%M МСК")
                 except Exception:
                     when = dt.astimezone(timezone.utc).strftime("%d.%m.%Y %H:%M UTC")
-                tier = "♠ <b>Подписка PLUS</b> до " f"<code>{when}</code>"
+                tier = f"{theme.PLUS} <b>Подписка PLUS</b> до <code>{when}</code>"
             except ValueError:
-                tier = "♠ <b>Подписка PLUS</b> активна"
+                tier = f"{theme.PLUS} <b>Подписка PLUS</b> активна"
         else:
-            tier = "♠ <b>Подписка PLUS</b> без срока окончания"
+            tier = f"{theme.PLUS} <b>Подписка PLUS</b> без срока окончания"
     else:
         tier = f"{theme.CABINET} <b>Гость</b>"
     luck_ln = _luck_cabinet_line(u, db, uid)
@@ -1692,7 +1692,7 @@ async def cmd_start_frag(message: Message, db: Database, settings: Settings) -> 
     )
     extra_admin = ""
     if uid in settings.admin_ids:
-        extra_admin = "\n\n<i>Админ:</i> кнопка <b>⚙️ Админ</b> внизу или <code>/admin</code>."
+        extra_admin = f"\n\n<i>Админ:</i> кнопка <b>{theme.ADMIN} Админ</b> внизу или <code>/admin</code>."
     await message.answer(
         intro + "\n\n<i>Дальше — кнопки внизу экрана.</i>" + extra_admin,
         reply_markup=kb_fragment_main(uid=uid, settings=settings),
@@ -1746,7 +1746,7 @@ async def on_text_frag(message: Message, db: Database, settings: Settings, check
                 rem = max(0, settings.luck_promo_max_uses - used)
                 rem_txt = f"\n\n<i>Осталось активаций этого кода: <b>{rem}</b>.</i>"
             await message.answer(
-                "<b>🍀 Удача активирована.</b>\n\n"
+                f"<b>{theme.LUCK} Удача активирована.</b>\n\n"
                 f"{luck_desc}\n\n"
                 "Режим «Удача» учтётся при следующем подборе имени."
                 + rem_txt,
@@ -2125,7 +2125,7 @@ async def on_callback_frag(
         name = data.split(":", 1)[1].lower()
         res = db.save_username(uid, name)
         if res == "saved":
-            await cb.message.answer("✅ Юзернейм сохранён!", parse_mode="HTML")
+            await cb.message.answer(f"{theme.OK} Юзернейм сохранён!", parse_mode="HTML")
         elif res == "duplicate":
             await cb.message.answer("Этот ник уже в сохранённых.", parse_mode="HTML")
         elif res == "limit":
@@ -2294,7 +2294,7 @@ async def cmd_start_v2(message: Message, db: Database, settings: Settings) -> No
     )
     extra_admin = ""
     if uid in settings.admin_ids:
-        extra_admin = "\n\n<i>Админ:</i> кнопка <b>⚙️ Админ</b> внизу или <code>/admin</code>."
+        extra_admin = f"\n\n<i>Админ:</i> кнопка <b>{theme.ADMIN} Админ</b> внизу или <code>/admin</code>."
     intro_full = intro + extra_admin
     await message.answer(
         intro_full,
@@ -2779,7 +2779,7 @@ async def on_text_v2(
                 rem = max(0, settings.luck_promo_max_uses - used)
                 rem_txt = f"\n\n<i>Осталось активаций этого кода: <b>{rem}</b>.</i>"
             await message.answer(
-                "<b>🍀 Удача активирована.</b>\n\n"
+                f"<b>{theme.LUCK} Удача активирована.</b>\n\n"
                 f"{luck_desc}\n\n"
                 "При подборе будет учитываться приоритет удачных имён в каталоге."
                 + rem_txt,
@@ -3227,7 +3227,7 @@ async def on_callback_v2(cb: CallbackQuery, db: Database, settings: Settings, ch
         uname = data.split(":", 1)[1].lower()
         res = db.save_username(uid, uname)
         if res == "saved":
-            await cb.message.answer("✅ Юзернейм сохранён!", parse_mode="HTML")
+            await cb.message.answer(f"{theme.OK} Юзернейм сохранён!", parse_mode="HTML")
         elif res == "duplicate":
             await cb.message.answer("Этот ник уже в сохранённых.", parse_mode="HTML")
         elif res == "limit":
@@ -3261,7 +3261,7 @@ async def on_callback_v2(cb: CallbackQuery, db: Database, settings: Settings, ch
         tier = data.split(":", 2)[2]
         if "roll_len" not in ud:
             await cb.message.edit_text(
-                f"<b>⚠️ Сначала длину.</b> Нажми «{html.escape(BTN_ROLL)}» и выбери 🔹 5 или 6.",
+                f"<b>{theme.WARN} Сначала длину.</b> Нажми «{html.escape(BTN_ROLL)}» и выбери {theme.PURPLE_ALT} 5 или 6.",
                 parse_mode="HTML",
             )
             return
@@ -3346,7 +3346,7 @@ async def start_entry(
             try:
                 await message.bot.send_message(
                     ref_uid,
-                    f"<b>🎁 Реферал!</b> Новый пользователь зашёл по вашей ссылке.\n"
+                    f"<b>{theme.GIFT} Реферал!</b> Новый пользователь зашёл по вашей ссылке.\n"
                     f"Начислено <b>+{settings.referral_plus_hours} ч</b> подписки PLUS.",
                     parse_mode="HTML",
                 )

@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+import ui_theme as theme
+
 from aiogram import BaseMiddleware
 from aiogram.enums import ChatMemberStatus, ChatType
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message, TelegramObject
@@ -142,7 +144,7 @@ class AiogramChannelGateMiddleware(BaseMiddleware):
             if data_cb == SUB_CHECK_CALLBACK:
                 ok, gate_err = await aiogram_get_channel_membership(bot, ch, user.id)
                 if ok:
-                    await event.answer("✅ Подписка подтверждена!")
+                    await event.answer(f"{theme.OK} Подписка подтверждена!")
                     assert event.message
                     db = data.get("db")
                     uid = user.id
@@ -163,7 +165,7 @@ class AiogramChannelGateMiddleware(BaseMiddleware):
                             try:
                                 await bot.send_message(
                                     ref_uid,
-                                    "<b>🎁 Реферал!</b> Новый пользователь зашёл по вашей ссылке.\n"
+                                    f"<b>{theme.GIFT} Реферал!</b> Новый пользователь зашёл по вашей ссылке.\n"
                                     f"Начислено <b>+{settings.referral_plus_hours} ч</b> подписки PLUS.",
                                     parse_mode="HTML",
                                 )
@@ -180,7 +182,7 @@ class AiogramChannelGateMiddleware(BaseMiddleware):
                             "AiogramChannelGateMiddleware: нет db в data — реферал после подписки не применён."
                         )
                     await event.message.answer(
-                        "<b>✅ Канал подписан.</b> Дальше — кнопки меню или <code>/start</code>.",
+                        f"<b>{theme.OK} Канал подписан.</b> Дальше — кнопки меню или <code>/start</code>.",
                         reply_markup=_aiogram_main_reply_keyboard(user.id, settings),
                         parse_mode="HTML",
                     )

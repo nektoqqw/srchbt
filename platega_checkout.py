@@ -11,6 +11,7 @@ from aiogram.types import CallbackQuery
 
 from config import Settings
 from db import Database
+import ui_theme as theme
 from luck_tariffs import (
     LuckTariff,
     kb_luck_payment_nav,
@@ -171,7 +172,7 @@ def _hint_test_amount_prefix(settings: Settings) -> str:
     if tr is None or tr <= 0:
         return ""
     return (
-        f"<b>⚠️ Тестовая сумма:</b> к оплате в Platega уйдёт <b>{tr:g} ₽</b> "
+        f"<b>{theme.WARN} Тестовая сумма:</b> к оплате в Platega уйдёт <b>{tr:g} ₽</b> "
         f"(<code>PLATEGA_TEST_AMOUNT_RUB</code>). После проверки удалите строку из <code>.env</code>.\n\n"
     )
 

@@ -17,6 +17,8 @@ import sys
 from functools import partial
 from typing import Final
 
+import ui_theme as theme
+
 from telegram import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
@@ -56,9 +58,9 @@ log = logging.getLogger(__name__)
 BTN_ROLL: Final[str] = "🎲 Ролл по ценности"
 BTN_ANALYZE: Final[str] = "🔍 Проверить и оценить"
 BTN_TOP: Final[str] = "📈 Топ за месяц"
-BTN_CABINET: Final[str] = "👤 Личный кабинет"
-BTN_SUPPORT: Final[str] = "💬 Поддержка"
-BTN_PLUS: Final[str] = "⭐ Подписка PLUS"
+BTN_CABINET: Final[str] = f"{theme.CABINET} Личный кабинет"
+BTN_SUPPORT: Final[str] = f"{theme.SUPPORT} Поддержка"
+BTN_PLUS: Final[str] = f"{theme.PLUS} Подписка PLUS"
 
 
 MAIN_MENU_KB: Final[ReplyKeyboardMarkup] = ReplyKeyboardMarkup(
@@ -291,7 +293,7 @@ async def format_cabinet(db: Database, uid: int, settings: Settings) -> str:
     lines = [
         "<b>Личный кабинет</b>",
         "",
-        f"Подписка: {'<b>PLUS</b> ✅' if u.is_plus else 'Бесплатная'}",
+        f"Подписка: {'<b>PLUS</b> ' + theme.OK if u.is_plus else 'Бесплатная'}",
     ]
     if rem is None:
         lines.append("Поиски: безлимит")
@@ -385,7 +387,7 @@ async def perform_roll(
                         uname,
                         predicted_price,
                         rarity_info.name,
-                        why + " | ⚠️ занятость в Telegram не проверялась (Telethon выключен).",
+                        why + f" | {theme.WARN} занятость в Telegram не проверялась (Telethon выключен).",
                     )
                 )
         except Exception:
@@ -408,7 +410,7 @@ async def perform_roll(
                             cand,
                             predicted_price,
                             rarity_info.name,
-                            why + " | ⚠️ случайный ник, занятость не проверялась (Telethon выключен).",
+                            why + f" | {theme.WARN} случайный ник, занятость не проверялась (Telethon выключен).",
                         )
                     )
                 except Exception:
@@ -525,13 +527,13 @@ async def perform_analysis(
 
     if available is None:
         status = (
-            "⚠️ <b>Автопроверка «свободен для установки» недоступна</b> (режим без Telethon). "
+            f"{theme.WARN} <b>Автопроверка «свободен для установки» недоступна</b> (режим без Telethon). "
             "В Telegram: Настройки → Профиль → Имя пользователя — попробуйте назначить этот логин вручную."
         )
     elif available:
-        status = "✅ Свободен для установки (по checkUsername)"
+        status = f"{theme.OK} Свободен для установки (по checkUsername)"
     else:
-        status = "❌ Занят или недоступен (не проходит checkUsername)"
+        status = f"{theme.FAIL} Занят или недоступен (не проходит checkUsername)"
 
     lines = [
         f"{_format_telegram_username(uname)}",
@@ -572,7 +574,7 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if code == settings.plus_promo_code:
             db.set_plus(uid, True)
             await update.message.reply_html(
-                "✅ PLUS активирован!\nТеперь можно сохранять найденные username и роллить без лимитов.",
+                f"{theme.OK} PLUS активирован!\nТеперь можно сохранять найденные username и роллить без лимитов.",
                 reply_markup=MAIN_MENU_KB,
             )
         else:
@@ -665,9 +667,9 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             context.bot, settings.required_channel_username, uid
         )
         if ok:
-            await q.answer("✅ Подписка подтверждена!")
+            await q.answer(f"{theme.OK} Подписка подтверждена!")
             await q.message.reply_html(
-                "<b>✅ Канал подписан.</b> Дальше — кнопки меню или <code>/start</code>.",
+                f"<b>{theme.OK} Канал подписан.</b> Дальше — кнопки меню или <code>/start</code>.",
                 reply_markup=MAIN_MENU_KB,
             )
         else:
@@ -759,7 +761,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         uname = data.split(":", 1)[1].lower()
         res = db.save_username(uid, uname)
         if res == "saved":
-            await q.message.reply_html("✅ Юзернейм сохранён!")
+            await q.message.reply_html(f"{theme.OK} Юзернейм сохранён!")
         elif res == "duplicate":
             await q.message.reply_html("Этот ник уже в списке.")
         elif res == "limit":

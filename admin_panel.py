@@ -18,6 +18,8 @@ from config import Settings
 from db import Database
 from plus_tariffs import PLUS_TARIFFS, plus_tariff_by_key
 
+import ui_theme as theme
+
 log = logging.getLogger(__name__)
 
 ADMIN_SESS_PROMO = "admin_promo_expect"
@@ -62,7 +64,7 @@ def _promo_list_view(
         luck_hours,
         uses_n,
     ) in rows:
-        st = "✅" if active else "⛔️"
+        st = theme.OK if active else theme.FAIL
         kind_ru = "PLUS" if kind == "plus" else "Удача"
         if max_u <= 0:
             lim_txt = "лимит ∞"
@@ -149,7 +151,7 @@ def admin_docs_menu_html(db: Database) -> str:
     t = db.get_legal_document_url("terms")
     p = db.get_legal_document_url("privacy")
     return (
-        "<blockquote><b>📄 Документы</b></blockquote>\n"
+        f"<blockquote><b>{theme.DOCS} Документы</b></blockquote>\n"
         "<code>════════════</code>\n\n"
         "<b>• Пользовательское соглашение</b>\n"
         f"{_doc_url_preview(t)}\n\n"
@@ -190,7 +192,7 @@ def kb_admin_root(db: Database) -> InlineKeyboardMarkup:
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="✨ PLUS по дням",
+                    text=f"{theme.CHART} PLUS по дням",
                     callback_data="adm:ppm",
                 ),
             ],
@@ -202,7 +204,7 @@ def kb_admin_root(db: Database) -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton(
-                    text="🍀 Удача",
+                    text=f"{theme.LUCK} Удача",
                     callback_data="adm:pl",
                 ),
             ],
@@ -229,7 +231,7 @@ def kb_admin_root(db: Database) -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton(
-                    text="📄 Документы",
+                    text=f"{theme.DOCS} Документы",
                     callback_data="adm:docs",
                 ),
             ],
@@ -319,7 +321,7 @@ async def admin_handle_callback(
             rows.append(row)
         rows.append([InlineKeyboardButton(text="« Пульт", callback_data="adm:home")])
         await cb.message.edit_text(
-            "<b>✨ Промокод PLUS по дням</b>\n<code>────────</code>\n\n"
+            f"<b>{theme.CHART} Промокод PLUS по дням</b>\n<code>────────</code>\n\n"
             "Выберите <b>срок</b> как в витрине тарифов.\n\n"
             "<b>PLUS на часы</b> — отдельная кнопка на главном экране пульта "
             "(<code>⏱ PLUS на часы</code>).\n\n"
@@ -338,7 +340,7 @@ async def admin_handle_callback(
         sess_uid.pop(ADMIN_SESS_DOC, None)
         sess_uid[ADMIN_SESS_PROMO] = "plus_by_hours"
         await cb.message.edit_text(
-            "<b>✨ Промокод PLUS на часы</b>\n<code>────────</code>\n\n"
+            f"<b>{theme.CHART} Промокод PLUS на часы</b>\n<code>────────</code>\n\n"
             "Одним сообщением пришлите <b>три поля через пробел</b>:\n"
             "<code>КОД ЛИМИТ ЧАСЫ</code>\n\n"
             "• <b>КОД</b> — латиница и цифры, 3–40 символов\n"
@@ -374,7 +376,7 @@ async def admin_handle_callback(
             else f"<b>{html.escape(tar.title_ru)}</b> ({tar.days} дн.)"
         )
         await cb.message.edit_text(
-            "<b>✨ Промокод PLUS</b>\n<code>────────</code>\n\n"
+            f"<b>{theme.CHART} Промокод PLUS</b>\n<code>────────</code>\n\n"
             f"<b>Срок по коду:</b> {period}\n\n"
             "Одним сообщением пришлите строку вида:\n"
             "<code>КОД ЛИМИТ</code>\n\n"
@@ -399,7 +401,7 @@ async def admin_handle_callback(
         admin_clear_session(sess_uid)
         sess_uid[ADMIN_SESS_PROMO] = "luck"
         await cb.message.edit_text(
-            "<b>🍀 Новый промокод Удача</b>\n<code>────────</code>\n\n"
+            f"<b>{theme.LUCK} Новый промокод Удача</b>\n<code>────────</code>\n\n"
             "<b>Вариант 1 — без таймера</b> (как раньше), два поля:\n"
             "<code>КОД ЛИМИТ</code>\n\n"
             "<b>Вариант 2 — на часы</b>, три поля:\n"
@@ -437,7 +439,7 @@ async def admin_handle_callback(
                     ],
                     [
                         InlineKeyboardButton(
-                            text="♠️ Только с PLUS",
+                            text=f"{theme.PLUS} Только с PLUS",
                             callback_data="adm:bc:set:plus",
                         ),
                     ],
@@ -500,7 +502,7 @@ async def admin_handle_callback(
                     ],
                     [
                         InlineKeyboardButton(
-                            text="♠️ Только PLUS",
+                            text=f"{theme.PLUS} Только PLUS",
                             callback_data="adm:usr:p:0",
                         ),
                     ],
@@ -530,14 +532,14 @@ async def admin_handle_callback(
             if offset > 0:
                 nav.append(
                     InlineKeyboardButton(
-                        text="◀ Назад",
+                        text=f"{theme.PURPLE_ALT} Назад",
                         callback_data=f"adm:usr:{mode}:{max(0, offset - USER_PAGE)}",
                     )
                 )
             if offset + len(ids) < total:
                 nav.append(
                     InlineKeyboardButton(
-                        text="Вперёд ▶",
+                        text=f"Вперёд {theme.GREEN_LEAF}",
                         callback_data=f"adm:usr:{mode}:{offset + len(ids)}",
                     )
                 )
@@ -606,7 +608,7 @@ async def admin_handle_callback(
                 inline_keyboard=[
                     [
                         InlineKeyboardButton(
-                            text="⛔️ Убрать ссылку",
+                            text=f"{theme.FAIL} Убрать ссылку",
                             callback_data=f"adm:doc:clr:{kind}",
                         )
                     ],
@@ -941,11 +943,11 @@ def legal_documents_user_html(db: Database) -> str:
     p = db.get_legal_document_url("privacy")
     if not t and not p:
         return (
-            "<b>📄 Документы</b>\n<code>────────</code>\n\n"
+            f"<b>{theme.DOCS} Документы</b>\n<code>────────</code>\n\n"
             "<i>Ссылки ещё не добавлены. Если нужны юридические тексты — напишите в поддержку.</i>"
         )
     lines = [
-        "<b>📄 Документы</b>",
+        f"<b>{theme.DOCS} Документы</b>",
         "<code>────────</code>",
         "",
     ]

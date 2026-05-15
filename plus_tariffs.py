@@ -9,6 +9,8 @@ from zoneinfo import ZoneInfo
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
+import ui_theme as theme
+
 from tariff_pricing import TARIFF_DISCOUNT_PERCENT, sale_price_rub, tariff_payment_price_line_html
 
 
@@ -58,7 +60,7 @@ def kb_plus_tariffs() -> InlineKeyboardMarkup:
     rows.append(
         [
             InlineKeyboardButton(
-                text="🗝 У меня есть промокод",
+                text=f"{theme.PURPLE_ALT} У меня есть промокод",
                 callback_data="plus:enter",
             )
         ]
@@ -94,20 +96,20 @@ def plus_subscriber_status_banner_html(
         return ""
     if plus_expires_at is None:
         return (
-            "✅ <b>Подписка PLUS</b> уже активна <b>без даты окончания</b>.\n"
+            f"{theme.OK} <b>Подписка PLUS</b> уже активна <b>без даты окончания</b>.\n"
             "<i>Ниже можно оформить ещё один тариф — дни прибавятся к сроку "
             "(кроме варианта «навсегда»).</i>\n\n"
         )
     when = format_plus_expires_human_ru(plus_expires_at)
     return (
-        f"✅ <b>Подписка PLUS</b> активирована до <b>{html_escape(when)}</b>.\n"
+        f"{theme.OK} <b>Подписка PLUS</b> активирована до <b>{html_escape(when)}</b>.\n"
         "<i>Новый тариф продлит срок после оплаты.</i>\n\n"
     )
 
 
 def plus_shop_intro_html(*, status_banner: str = "") -> str:
     return (
-        f"<b>♠️ Подписка PLUS</b>\n\n"
+        f"<b>{theme.PLUS} Подписка PLUS</b>\n\n"
         f"{status_banner}"
         f"<b>Скидка {TARIFF_DISCOUNT_PERCENT}%</b> на все сроки — в кнопках указана цена со скидкой.\n\n"
         "Снимает лимит на <b>подбор имён</b> на выбранный срок и даёт <b>сохранение никнеймов</b>.\n\n"
@@ -136,7 +138,7 @@ def kb_plus_payment_nav(*, pay_url: str | None = None) -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton(
-                    text="🗝 Ввести промокод",
+                    text=f"{theme.PURPLE_ALT} Ввести промокод",
                     callback_data="plus:enter",
                 )
             ],
@@ -164,7 +166,7 @@ def plus_tariff_payment_html(
             "(обычно в течение минуты).</i>"
         )
     return (
-        f"<b>♠️ Оплата PLUS</b>\n\n"
+        f"<b>{theme.PLUS} Оплата PLUS</b>\n\n"
         f"{status_banner}"
         f"Тариф: <b>{html_escape(t.title_ru)}</b>\n"
         f"Срок: {period}\n"

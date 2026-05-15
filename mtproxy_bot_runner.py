@@ -30,6 +30,7 @@ from db import Database, SAVED_USERNAMES_LIMIT
 from fragment_scraper import fetch_fragment_gift_price
 
 import bot_v2 as ui
+import ui_theme as theme
 
 log = logging.getLogger(__name__)
 
@@ -180,7 +181,7 @@ async def _perform_roll(
                         uname,
                         predicted_price,
                         rarity_info.name,
-                        why + " | ⚠️ занятость в Telegram не проверялась (Telethon выключен).",
+                        why + f" | {theme.WARN} занятость в Telegram не проверялась (Telethon выключен).",
                     )
                 )
         except Exception:
@@ -202,7 +203,7 @@ async def _perform_roll(
                             cand,
                             predicted_price,
                             rarity_info.name,
-                            why + " | ⚠️ случайный ник, занятость не проверялась (Telethon выключен).",
+                            why + f" | {theme.WARN} случайный ник, занятость не проверялась (Telethon выключен).",
                         )
                     )
                 except Exception:
@@ -309,13 +310,13 @@ async def _perform_analysis(
 
     if available is None:
         status = (
-            "⚠️ <b>Автопроверка «свободен для установки» недоступна</b> (режим без Telethon). "
+            f"{theme.WARN} <b>Автопроверка «свободен для установки» недоступна</b> (режим без Telethon). "
             "В Telegram: Настройки → Профиль → Имя пользователя — попробуйте назначить этот логин вручную."
         )
     elif available:
-        status = "✅ Свободен для установки (по checkUsername)"
+        status = f"{theme.OK} Свободен для установки (по checkUsername)"
     else:
-        status = "❌ Занят или недоступен (не проходит checkUsername)"
+        status = f"{theme.FAIL} Занят или недоступен (не проходит checkUsername)"
 
     lines = [
         f"@{uname.lower()}",
@@ -490,10 +491,10 @@ def register_handlers(client: TelegramClient, ctx: dict[str, Any]) -> None:
                 event.client, settings.required_channel_username, uid
             )
             if ok:
-                await event.answer("✅ Подписка подтверждена!")
+                await event.answer(f"{theme.OK} Подписка подтверждена!")
                 await event.client.send_message(
                     uid,
-                    "<b>✅ Канал подписан.</b> Дальше — кнопки меню или <code>/start</code>.",
+                    f"<b>{theme.OK} Канал подписан.</b> Дальше — кнопки меню или <code>/start</code>.",
                     parse_mode="html",
                     buttons=_main_menu_rows(),
                 )
@@ -585,7 +586,7 @@ def register_handlers(client: TelegramClient, ctx: dict[str, Any]) -> None:
             res = db.save_username(uid, uname)
             await event.answer()
             if res == "saved":
-                await event.client.send_message(uid, "✅ Юзернейм сохранён!")
+                await event.client.send_message(uid, f"{theme.OK} Юзернейм сохранён!")
             elif res == "duplicate":
                 await event.client.send_message(uid, "Этот ник уже в списке.")
             elif res == "limit":
@@ -652,7 +653,7 @@ def register_handlers(client: TelegramClient, ctx: dict[str, Any]) -> None:
             if code == settings.plus_promo_code:
                 db.set_plus(uid, True)
                 await event.respond(
-                    "✅ PLUS активирован!\nТеперь можно сохранять найденные username и роллить без лимитов.",
+                    f"{theme.OK} PLUS активирован!\nТеперь можно сохранять найденные username и роллить без лимитов.",
                     parse_mode="html",
                     buttons=_main_menu_rows(),
                 )
