@@ -2,126 +2,182 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="theme-color" content="#000000" />
   <title>Амням</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <link rel="stylesheet" href="/app/static/css/app.css" />
 </head>
 <body>
-  <div class="bg-glow" aria-hidden="true"></div>
+  <div class="bg-mesh" aria-hidden="true"></div>
   <div id="app" class="app">
-    <header class="top">
-      <div class="logo">Амням</div>
-      <p class="tagline">подбор · оценка · PLUS</p>
+    <header class="nav-header">
+      <h1 class="large-title" id="pageTitle">Амням</h1>
+      <p class="subtitle" id="pageSubtitle">подбор · оценка · PLUS</p>
     </header>
 
-    <section id="gate" class="panel gate hidden">
-      <h2>Канал</h2>
-      <p id="gateText">Подпишитесь на канал, чтобы пользоваться приложением.</p>
-      <a id="gateLink" class="btn primary" href="#" target="_blank">Подписаться</a>
-      <button type="button" class="btn ghost" id="gateRecheck">Я подписался — проверить</button>
+    <section id="gate" class="sheet gate hidden">
+      <h2 class="section-title">Канал</h2>
+      <p id="gateText" class="body-text">Подпишитесь на канал, чтобы пользоваться приложением.</p>
+      <a id="gateLink" class="btn btn-filled" href="#" target="_blank">Подписаться</a>
+      <button type="button" class="btn btn-plain" id="gateRecheck">Я подписался — проверить</button>
     </section>
 
     <main id="main" class="main hidden">
-      <nav class="tabs" role="tablist">
-        <button type="button" class="tab active" data-tab="home">🏠</button>
-        <button type="button" class="tab" data-tab="roll">🎰</button>
-        <button type="button" class="tab" data-tab="valuate">💰</button>
-        <button type="button" class="tab" data-tab="shop">♠️</button>
-        <button type="button" class="tab" data-tab="more">⋯</button>
-      </nav>
-
       <div id="tab-home" class="tab-pane active">
-        <div class="card hero">
+        <div class="sheet hero-sheet">
           <div class="stat-grid" id="stats"></div>
-          <button type="button" class="btn ghost sm" id="btnSyncPay">↻ Проверить оплаты</button>
+          <button type="button" class="btn btn-plain btn-sm" id="btnSyncPay">↻ Проверить оплаты</button>
         </div>
       </div>
 
       <div id="tab-roll" class="tab-pane">
-        <div class="card">
-          <h2>Крутить</h2>
-          <p class="muted">Свободный @ник латиницей, длина 5–7</p>
-          <div class="len-row">
-            <button type="button" class="chip len active" data-len="5">5</button>
-            <button type="button" class="chip len" data-len="6">6</button>
-            <button type="button" class="chip len" data-len="7">7</button>
+        <div class="sheet">
+          <h2 class="section-title">Крутить</h2>
+          <p class="caption">Свободный @ник латиницей</p>
+          <div class="segmented" role="group" aria-label="Длина">
+            <button type="button" class="seg-item len active" data-len="5">5</button>
+            <button type="button" class="seg-item len" data-len="6">6</button>
+            <button type="button" class="seg-item len" data-len="7">7</button>
           </div>
           <div id="filtersBlock" class="filters hidden">
-            <h3>Фильтры PLUS</h3>
-            <label>Префикс (до 2 букв)</label>
-            <input id="fPre" maxlength="2" autocomplete="off" />
-            <label>Суффикс</label>
-            <input id="fSuf" maxlength="2" autocomplete="off" />
-            <label>Цифры</label>
-            <select id="fDig">
+            <h3 class="section-title-sm">Фильтры PLUS</h3>
+            <label class="field-label">Префикс</label>
+            <input class="field-input" id="fPre" maxlength="2" autocomplete="off" autocapitalize="off" />
+            <label class="field-label">Суффикс</label>
+            <input class="field-input" id="fSuf" maxlength="2" autocomplete="off" autocapitalize="off" />
+            <label class="field-label">Цифры</label>
+            <select class="field-input" id="fDig">
               <option value="any">Любые</option>
               <option value="yes">С цифрами</option>
               <option value="no">Без цифр</option>
             </select>
-            <button type="button" class="btn ghost sm" id="btnSaveFilters">Сохранить фильтры</button>
+            <button type="button" class="btn btn-plain btn-sm" id="btnSaveFilters">Сохранить фильтры</button>
           </div>
-          <button type="button" class="btn primary block" id="btnRoll">Запустить подбор</button>
-          <div id="rollProgress" class="progress hidden">
-            <div class="bar"><div class="fill" id="rollBar"></div></div>
-            <p id="rollStatus" class="muted">Ищем…</p>
+          <div id="rollStage" class="roll-stage hidden" aria-live="polite">
+            <div class="roll-ring" aria-hidden="true"></div>
+            <div class="slot-row" id="slotRow"></div>
+            <p id="rollStatus" class="roll-status">Ищем свободный ник…</p>
+            <p id="rollAttempts" class="caption"></p>
           </div>
-          <div id="rollResult" class="result hidden"></div>
+          <button type="button" class="btn btn-filled btn-block" id="btnRoll">Запустить подбор</button>
+          <div id="rollResult" class="result-card hidden"></div>
         </div>
       </div>
 
       <div id="tab-valuate" class="tab-pane">
-        <div class="card">
-          <h2>Оценка ника</h2>
-          <textarea id="valInput" rows="3" placeholder="crypto, wolf, ninja"></textarea>
-          <button type="button" class="btn primary block" id="btnValuate">Оценить</button>
+        <div class="sheet">
+          <h2 class="section-title">Оценка ника</h2>
+          <textarea class="field-input field-textarea" id="valInput" rows="3" placeholder="crypto, wolf, ninja" autocapitalize="off"></textarea>
+          <button type="button" class="btn btn-filled btn-block" id="btnValuate">Оценить</button>
           <div id="valResults" class="stack"></div>
         </div>
       </div>
 
       <div id="tab-shop" class="tab-pane">
-        <div class="card">
-          <h2>Подписка PLUS</h2>
-          <div id="plusTariffs" class="tariff-grid"></div>
-          <h2 class="mt">Удача</h2>
-          <p class="muted">Тарифы удачи — при активном PLUS</p>
-          <div id="luckTariffs" class="tariff-grid"></div>
+        <div class="sheet">
+          <h2 class="section-title">PLUS</h2>
+          <div id="plusTariffs" class="tariff-list"></div>
+          <h2 class="section-title mt-lg">Удача</h2>
+          <p class="caption">При активной подписке PLUS</p>
+          <div id="luckTariffs" class="tariff-list"></div>
           <div class="promo-row">
-            <input id="promoCode" placeholder="Промокод" />
-            <select id="promoKind">
+            <input class="field-input" id="promoCode" placeholder="Промокод" autocapitalize="characters" />
+            <select class="field-input field-select" id="promoKind">
               <option value="plus">PLUS</option>
               <option value="luck">Удача</option>
             </select>
-            <button type="button" class="btn ghost" id="btnPromo">OK</button>
+            <button type="button" class="btn btn-tinted" id="btnPromo">OK</button>
           </div>
-          <button type="button" class="btn ghost block" id="btnLuckToggle">Пауза «Удачи» в подборе</button>
+          <button type="button" class="btn btn-plain btn-block" id="btnLuckToggle">Пауза «Удачи»</button>
         </div>
       </div>
 
       <div id="tab-more" class="tab-pane">
-        <div class="card">
-          <h2>Рефералка</h2>
-          <p id="refLink" class="mono"></p>
-          <p id="refCount" class="muted"></p>
-          <button type="button" class="btn ghost sm" id="btnCopyRef">Скопировать ссылку</button>
+        <div class="sheet">
+          <h2 class="section-title">Рефералка</h2>
+          <p id="refLink" class="mono-text"></p>
+          <p id="refCount" class="caption"></p>
+          <button type="button" class="btn btn-plain btn-sm" id="btnCopyRef">Скопировать ссылку</button>
         </div>
-        <div class="card">
-          <h2>Сохранённые @ники</h2>
-          <p class="muted">Только для PLUS</p>
-          <ul id="savedList" class="list"></ul>
+        <div class="sheet">
+          <h2 class="section-title">Сохранённые</h2>
+          <p class="caption">Только для PLUS</p>
+          <ul id="savedList" class="list-group"></ul>
         </div>
-        <div class="card">
-          <h2>Документы</h2>
+        <div class="sheet">
+          <h2 class="section-title">Документы</h2>
           <div id="docsHtml" class="docs"></div>
         </div>
-        <div class="card">
-          <h2>Поддержка</h2>
-          <a id="supportLink" class="btn ghost block" href="https://t.me/amnyam_supportt">@amnyam_supportt</a>
+        <div class="sheet">
+          <h2 class="section-title">Поддержка</h2>
+          <a id="supportLink" class="btn btn-plain btn-block" href="https://t.me/amnyam_supportt">@amnyam_supportt</a>
+        </div>
+      </div>
+
+      <div id="tab-admin" class="tab-pane">
+        <div class="sheet admin-sheet">
+          <h2 class="section-title">Пульт</h2>
+          <div id="adminStats" class="stat-grid"></div>
+          <button type="button" class="btn btn-filled btn-block" id="btnAdminSearch">Переключить блокировку поиска</button>
+          <h3 class="section-title-sm">Выдать по Telegram ID</h3>
+          <input class="field-input" id="admUid" inputmode="numeric" placeholder="User ID" />
+          <select class="field-input" id="admAction">
+            <option value="plus_tariff">PLUS по тарифу</option>
+            <option value="plus_basic">PLUS (базовый)</option>
+            <option value="plus_forever">PLUS навсегда</option>
+            <option value="plus_hours">PLUS + часы</option>
+            <option value="luck_tariff">Удача по тарифу</option>
+            <option value="luck_basic">Удача (вкл.)</option>
+            <option value="luck_off">Удача (выкл.)</option>
+          </select>
+          <select class="field-input" id="admTariff"></select>
+          <input class="field-input hidden" id="admHours" inputmode="numeric" placeholder="Часов PLUS" value="24" />
+          <button type="button" class="btn btn-filled btn-block" id="btnAdminGrant">Выдать</button>
+          <h3 class="section-title-sm">Рассылка (HTML)</h3>
+          <select class="field-input" id="admBcMode">
+            <option value="all">Всем в базе</option>
+            <option value="plus">Только PLUS</option>
+          </select>
+          <textarea class="field-input field-textarea" id="admBcText" rows="4" placeholder="Текст рассылки…"></textarea>
+          <button type="button" class="btn btn-tinted btn-block" id="btnAdminBc">Отправить</button>
+          <h3 class="section-title-sm">Промокод</h3>
+          <input class="field-input" id="admPromoCode" placeholder="CODE" autocapitalize="characters" />
+          <select class="field-input" id="admPromoKind">
+            <option value="plus">PLUS</option>
+            <option value="luck">Удача</option>
+          </select>
+          <input class="field-input" id="admPromoMax" inputmode="numeric" placeholder="Лимит (0 = без)" value="0" />
+          <input class="field-input" id="admPromoDays" inputmode="numeric" placeholder="Дней PLUS" value="7" />
+          <button type="button" class="btn btn-plain btn-block" id="btnAdminPromo">Создать промокод</button>
+          <ul id="admPromoList" class="list-group compact"></ul>
         </div>
       </div>
     </main>
 
-    <div id="toast" class="toast hidden"></div>
+    <nav id="tabBar" class="tab-bar hidden" role="tablist" aria-label="Навигация">
+      <button type="button" class="tab-item active" data-tab="home" aria-label="Главная">
+        <span class="tab-icon">⌂</span><span class="tab-label">Главная</span>
+      </button>
+      <button type="button" class="tab-item" data-tab="roll" aria-label="Крутить">
+        <span class="tab-icon">◎</span><span class="tab-label">Крутить</span>
+      </button>
+      <button type="button" class="tab-item" data-tab="valuate" aria-label="Оценка">
+        <span class="tab-icon">$</span><span class="tab-label">Оценка</span>
+      </button>
+      <button type="button" class="tab-item" data-tab="shop" aria-label="Магазин">
+        <span class="tab-icon">♠</span><span class="tab-label">PLUS</span>
+      </button>
+      <button type="button" class="tab-item" data-tab="more" aria-label="Ещё">
+        <span class="tab-icon">⋯</span><span class="tab-label">Ещё</span>
+      </button>
+      <button type="button" class="tab-item tab-admin hidden" data-tab="admin" aria-label="Админ">
+        <span class="tab-icon">⚙</span><span class="tab-label">Админ</span>
+      </button>
+    </nav>
+
+    <div id="toast" class="toast hidden" role="status"></div>
   </div>
   <script src="/app/static/js/app.js"></script>
 </body>

@@ -3,11 +3,42 @@
   if (tg) {
     tg.ready();
     tg.expand();
-    tg.setHeaderColor("#0a0612");
-    tg.setBackgroundColor("#0a0612");
+    const scheme = tg.colorScheme || "dark";
+    const header = scheme === "light" ? "#f2f2f7" : "#000000";
+    const bg = scheme === "light" ? "#f2f2f7" : "#000000";
+    tg.setHeaderColor(header);
+    tg.setBackgroundColor(bg);
+    if (tg.disableVerticalSwipes) tg.disableVerticalSwipes();
   }
 
-  let state = { me: null, rollLen: 5, refLink: "" };
+  const LETTERS = "abcdefghijklmnopqrstuvwxyz0123456789";
+  const TAB_TITLES = {
+    home: ["Амням", "аккаунт и статус"],
+    roll: ["Крутить", "подбор свободного @ника"],
+    valuate: ["Оценка", "стоимость ников"],
+    shop: ["PLUS", "подписка и удача"],
+    more: ["Ещё", "рефералка и документы"],
+    admin: ["Админ", "пульт управления"],
+  };
+
+  let state = {
+    me: null,
+    rollLen: 5,
+    refLink: "",
+    admin: null,
+    slotTimer: null,
+    pollTimer: null,
+  };
+
+  function haptic(type) {
+    try {
+      const h = tg && tg.HapticFeedback;
+      if (!h) return;
+      if (type === "success" && h.notificationOccurred) h.notificationOccurred("success");
+      else if (type === "error" && h.notificationOccurred) h.notificationOccurred("error");
+      else if (h.impactOccurred) h.impactOccurred(type === "heavy" ? "heavy" : "light");
+    } catch (_) {}
+  }
 
   function initData() {
     return (tg && tg.initData) || "";
@@ -24,6 +55,10 @@
       toast("Откройте приложение из бота Telegram");
       throw new Error("unauthorized");
     }
+    if (res.status === 403) {
+      toast("Нет доступа");
+      throw new Error("forbidden");
+    }
     return data;
   }
 
@@ -31,16 +66,70 @@
     const el = document.getElementById("toast");
     el.textContent = msg;
     el.classList.remove("hidden");
-    setTimeout(() => el.classList.add("hidden"), 3200);
+    clearTimeout(toast._t);
+    toast._t = setTimeout(() => el.classList.add("hidden"), 3200);
   }
 
   function showTab(name) {
-    document.querySelectorAll(".tab").forEach((b) => {
+    document.querySelectorAll(".tab-item").forEach((b) => {
       b.classList.toggle("active", b.dataset.tab === name);
     });
     document.querySelectorAll(".tab-pane").forEach((p) => {
       p.classList.toggle("active", p.id === "tab-" + name);
     });
+    const t = TAB_TITLES[name] || TAB_TITLES.home;
+    document.getElementById("pageTitle").textContent = t[0];
+    document.getElementById("pageSubtitle").textContent = t[1];
+    haptic("light");
+  }
+
+  function buildSlots(len) {
+    const row = document.getElementById("slotRow");
+    row.innerHTML = "";
+    for (let i = 0; i < len; i++) {
+      const cell = document.createElement("div");
+      cell.className = "slot-cell";
+      const strip = document.createElement("div");
+      strip.className = "slot-strip";
+      for (let j = 0; j < 8; j++) {
+        const ch = document.createElement("span");
+        ch.className = "slot-char";
+        ch.textContent = LETTERS[Math.floor(Math.random() * LETTERS.length)];
+        strip.appendChild(ch);
+      }
+      cell.appendChild(strip);
+      row.appendChild(cell);
+    }
+  }
+
+  function spinSlots() {
+    document.querySelectorAll(".slot-strip").forEach((strip) => {
+      const chars = strip.querySelectorAll(".slot-char");
+      chars.forEach((ch) => {
+        ch.textContent = LETTERS[Math.floor(Math.random() * LETTERS.length)];
+      });
+      const offset = Math.floor(Math.random() * 7) * 48;
+      strip.style.transform = `translateY(-${offset}px)`;
+    });
+  }
+
+  function startRollAnimation(len) {
+    const stage = document.getElementById("rollStage");
+    stage.classList.remove("hidden");
+    stage.classList.add("is-spinning");
+    buildSlots(len);
+    clearInterval(state.slotTimer);
+    state.slotTimer = setInterval(spinSlots, 90);
+    document.getElementById("btnRoll").disabled = true;
+    document.getElementById("rollResult").classList.add("hidden");
+    haptic("light");
+  }
+
+  function stopRollAnimation() {
+    const stage = document.getElementById("rollStage");
+    stage.classList.remove("is-spinning");
+    clearInterval(state.slotTimer);
+    document.getElementById("btnRoll").disabled = false;
   }
 
   function renderStats(me) {
@@ -60,7 +149,7 @@
       : "выкл.";
     document.getElementById("stats").innerHTML = `
       <div class="stat"><strong>PLUS</strong><span>${plus}</span></div>
-      <div class="stat"><strong>Удача</strong><span>${luck}${me.luck_roll_paused ? " (пауза)" : ""}</span></div>
+      <div class="stat"><strong>Удача</strong><span>${luck}${me.luck_roll_paused ? " · пауза" : ""}</span></div>
       <div class="stat"><strong>Крутки</strong><span>${rem}</span></div>
       <div class="stat"><strong>Рефералы</strong><span>${me.referral_count}</span></div>
     `;
@@ -76,6 +165,13 @@
     document.getElementById("btnLuckToggle").textContent = me.luck_roll_paused
       ? "▶ Включить «Удачу» в подборе"
       : "⏸ Пауза «Удачи» в подборе";
+
+    const adminTab = document.querySelector(".tab-admin");
+    if (me.is_admin) {
+      adminTab.classList.remove("hidden");
+    } else {
+      adminTab.classList.add("hidden");
+    }
   }
 
   function renderTariffs(data) {
@@ -108,12 +204,14 @@
   }
 
   async function buyTariff(kind, key) {
+    haptic("light");
     const r = await api("/api/checkout", {
       method: "POST",
       body: JSON.stringify({ kind, tariff_key: key }),
     });
     if (!r.ok) {
       toast(r.error === "plus_required" ? "Нужна подписка PLUS" : r.error || "Ошибка");
+      haptic("error");
       return;
     }
     if (r.pay_url && tg) {
@@ -123,6 +221,60 @@
     }
   }
 
+  function renderAdmin(d) {
+    if (!d || !d.ok) return;
+    state.admin = d;
+    const blocked = d.search_blocked;
+    document.getElementById("btnAdminSearch").textContent = blocked
+      ? "🔓 Разблокировать поиск"
+      : "🔒 Заблокировать поиск";
+    document.getElementById("adminStats").innerHTML = `
+      <div class="stat"><strong>Пользователей</strong><span>${d.users_total}</span></div>
+      <div class="stat"><strong>С PLUS</strong><span>${d.users_plus}</span></div>
+      <div class="stat"><strong>Поиск</strong><span>${blocked ? "закрыт" : "открыт"}</span></div>
+    `;
+    const sel = document.getElementById("admTariff");
+    const act = document.getElementById("admAction").value;
+    updateAdminTariffSelect(act, d);
+
+    document.getElementById("admPromoList").innerHTML = (d.promos || [])
+      .map(
+        (p) =>
+          `<li><span>${p.code}</span><span>${p.kind} · ${p.uses}/${p.max_uses || "∞"}</span></li>`
+      )
+      .join("");
+  }
+
+  function updateAdminTariffSelect(action, d) {
+    const sel = document.getElementById("admTariff");
+    const hours = document.getElementById("admHours");
+    if (action === "plus_hours") {
+      sel.classList.add("hidden");
+      hours.classList.remove("hidden");
+      return;
+    }
+    hours.classList.add("hidden");
+    if (action === "plus_tariff") {
+      sel.classList.remove("hidden");
+      sel.innerHTML = (d.plus_tariffs || [])
+        .map((t) => `<option value="${t.key}">${t.title}</option>`)
+        .join("");
+    } else if (action === "luck_tariff") {
+      sel.classList.remove("hidden");
+      sel.innerHTML = (d.luck_tariffs || [])
+        .map((t) => `<option value="${t.key}">${t.title}</option>`)
+        .join("");
+    } else {
+      sel.classList.add("hidden");
+    }
+  }
+
+  async function loadAdmin() {
+    if (!state.me || !state.me.is_admin) return;
+    const d = await api("/api/admin/dashboard");
+    renderAdmin(d);
+  }
+
   async function loadMe() {
     const me = await api("/api/me");
     if (!me.ok) throw new Error(me.error);
@@ -130,15 +282,17 @@
     if (me.channel && !me.channel_subscribed) {
       document.getElementById("gate").classList.remove("hidden");
       document.getElementById("main").classList.add("hidden");
+      document.getElementById("tabBar").classList.add("hidden");
       document.getElementById("gateLink").href = `https://t.me/${me.channel}`;
       document.getElementById("gateText").textContent =
         me.channel_gate_error === "bot_cannot_check"
-          ? "Подпишитесь на канал. Если уже подписаны — сообщите админу (бот должен быть админом канала)."
+          ? "Подпишитесь на канал. Если уже подписаны — напишите в поддержку."
           : `Подпишитесь на @${me.channel}, затем нажмите «Проверить».`;
       return;
     }
     document.getElementById("gate").classList.add("hidden");
     document.getElementById("main").classList.remove("hidden");
+    document.getElementById("tabBar").classList.remove("hidden");
     renderStats(me);
     const tariffs = await api("/api/tariffs");
     renderTariffs(tariffs);
@@ -146,7 +300,7 @@
     if (ref.ok) {
       state.refLink = ref.link;
       document.getElementById("refLink").textContent = ref.link;
-      document.getElementById("refCount").textContent = `Приглашено: ${ref.count} · +${ref.bonus_hours} ч PLUS за нового`;
+      document.getElementById("refCount").textContent = `Приглашено: ${ref.count} · +${ref.bonus_hours} ч PLUS`;
     }
     const docs = await api("/api/documents");
     document.getElementById("docsHtml").innerHTML = docs.html || "";
@@ -155,7 +309,7 @@
     ul.innerHTML = (saved.items || [])
       .map(
         (u) =>
-          `<li><span>@${u}</span><button type="button" class="btn ghost sm" data-del="${u}">✕</button></li>`
+          `<li><span>@${u}</span><button type="button" class="btn btn-plain btn-sm" data-del="${u}">✕</button></li>`
       )
       .join("");
     ul.querySelectorAll("[data-del]").forEach((btn) => {
@@ -164,72 +318,85 @@
         loadMe();
       });
     });
+    if (me.is_admin) loadAdmin();
+  }
+
+  function showRollResult(r) {
+    const resultEl = document.getElementById("rollResult");
+    resultEl.classList.remove("hidden");
+    if (r.found) {
+      resultEl.className = "result-card found";
+      haptic("success");
+      resultEl.innerHTML = `
+        <p class="username">@${r.username}</p>
+        <p>Редкость: <b>${r.rarity}</b></p>
+        <p>Ориентир: <b>$${(r.price_usd || 0).toLocaleString()}</b></p>
+        <p class="caption">${r.attempts} попыток</p>
+        ${state.me.is_plus ? `<button type="button" class="btn btn-plain btn-block" id="btnSaveRoll">Сохранить @ник</button>` : ""}
+      `;
+      const saveBtn = document.getElementById("btnSaveRoll");
+      if (saveBtn) {
+        saveBtn.onclick = async () => {
+          const s = await api("/api/saved", {
+            method: "POST",
+            body: JSON.stringify({ username: r.username }),
+          });
+          toast(s.ok ? "Сохранено" : s.error || "Не удалось");
+        };
+      }
+    } else {
+      resultEl.className = "result-card";
+      haptic("error");
+      resultEl.innerHTML = `<p>${r.timed_out ? "Не успели за лимит времени." : "Свободный ник не найден."} Попробуйте другую длину.</p>`;
+    }
   }
 
   async function pollRoll(jobId) {
-    const prog = document.getElementById("rollProgress");
-    const bar = document.getElementById("rollBar");
     const status = document.getElementById("rollStatus");
-    const resultEl = document.getElementById("rollResult");
-    prog.classList.remove("hidden");
-    resultEl.classList.add("hidden");
+    const attempts = document.getElementById("rollAttempts");
     let ticks = 0;
     while (ticks < 120) {
       const st = await api(`/api/roll/${jobId}`);
       if (!st.ok) break;
-      const p = Math.min(95, (st.progress || 0) * 2);
-      bar.style.width = p + "%";
-      status.textContent = `Проверено вариантов: ${st.progress || 0}…`;
+      status.textContent = "Ищем свободный ник…";
+      attempts.textContent = `Проверено: ${st.progress || 0}`;
       if (st.status === "done") {
-        bar.style.width = "100%";
-        prog.classList.add("hidden");
-        const r = st.result;
-        resultEl.classList.remove("hidden");
-        if (r.found) {
-          resultEl.innerHTML = `
-            <p class="username">@${r.username}</p>
-            <p>Редкость: <b>${r.rarity}</b></p>
-            <p>Ориентир: <b>$${(r.price_usd || 0).toLocaleString()}</b></p>
-            <p class="muted">${r.attempts} попыток</p>
-            ${state.me.is_plus ? `<button type="button" class="btn ghost sm block" id="btnSaveRoll">💾 Сохранить</button>` : ""}
-          `;
-          const saveBtn = document.getElementById("btnSaveRoll");
-          if (saveBtn) {
-            saveBtn.onclick = async () => {
-              const s = await api("/api/saved", {
-                method: "POST",
-                body: JSON.stringify({ username: r.username }),
-              });
-              toast(s.ok ? "Сохранено" : s.error || "Не удалось");
-            };
-          }
-        } else {
-          resultEl.innerHTML = `<p>${r.timed_out ? "Не успели за время лимита." : "Свободный ник не найден."} Попробуйте другую длину.</p>`;
-        }
+        stopRollAnimation();
+        document.getElementById("rollStage").classList.add("hidden");
+        showRollResult(st.result || {});
         loadMe();
         return;
       }
       if (st.status === "error") {
-        prog.classList.add("hidden");
+        stopRollAnimation();
+        document.getElementById("rollStage").classList.add("hidden");
+        const resultEl = document.getElementById("rollResult");
         resultEl.classList.remove("hidden");
-        resultEl.innerHTML = `<p class="muted">Ошибка: ${st.error || "?"}</p>`;
+        resultEl.className = "result-card";
+        resultEl.innerHTML = `<p class="caption">Ошибка: ${st.error || "?"}</p>`;
+        haptic("error");
         return;
       }
-      await new Promise((r) => setTimeout(r, 1500));
+      await new Promise((r) => setTimeout(r, 1200));
       ticks++;
     }
+    stopRollAnimation();
     status.textContent = "Долго… проверьте позже в боте.";
   }
 
-  document.querySelectorAll(".tab").forEach((btn) => {
-    btn.addEventListener("click", () => showTab(btn.dataset.tab));
+  document.querySelectorAll(".tab-item").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      showTab(btn.dataset.tab);
+      if (btn.dataset.tab === "admin") loadAdmin();
+    });
   });
 
-  document.querySelectorAll(".chip.len").forEach((btn) => {
+  document.querySelectorAll(".seg-item.len").forEach((btn) => {
     btn.addEventListener("click", () => {
-      document.querySelectorAll(".chip.len").forEach((b) => b.classList.remove("active"));
+      document.querySelectorAll(".seg-item.len").forEach((b) => b.classList.remove("active"));
       btn.classList.add("active");
       state.rollLen = parseInt(btn.dataset.len, 10);
+      haptic("light");
     });
   });
 
@@ -245,8 +412,10 @@
         filters_need_plus: "Фильтры только с PLUS",
       };
       toast(msgs[r.error] || r.error || "Ошибка");
+      haptic("error");
       return;
     }
+    startRollAnimation(state.rollLen);
     pollRoll(r.job_id);
   });
 
@@ -260,10 +429,12 @@
       }),
     });
     toast("Фильтры сохранены");
+    haptic("success");
     loadMe();
   });
 
   document.getElementById("btnValuate").addEventListener("click", async () => {
+    haptic("light");
     const text = document.getElementById("valInput").value;
     const r = await api("/api/valuate", {
       method: "POST",
@@ -271,7 +442,7 @@
     });
     const box = document.getElementById("valResults");
     if (!r.ok) {
-      box.innerHTML = `<p class="muted">${r.error || "Ошибка"}</p>`;
+      box.innerHTML = `<p class="caption">${r.error || "Ошибка"}</p>`;
       return;
     }
     box.innerHTML = (r.items || [])
@@ -286,10 +457,11 @@
         return `<div class="val-card">
           <strong>@${it.username}</strong>
           <p>$${it.price_usd != null ? it.price_usd.toLocaleString() : "?"} · ${it.rarity}</p>
-          <p class="muted">⭐ ${it.stars}/5 · ${frag}</p>
+          <p class="caption">⭐ ${it.stars}/5 · ${frag}</p>
         </div>`;
       })
       .join("");
+    haptic("success");
   });
 
   document.getElementById("btnPromo").addEventListener("click", async () => {
@@ -301,7 +473,10 @@
       }),
     });
     toast(r.ok ? "Промокод принят" : r.reason || "Отклонено");
-    if (r.ok) loadMe();
+    if (r.ok) {
+      haptic("success");
+      loadMe();
+    } else haptic("error");
   });
 
   document.getElementById("btnLuckToggle").addEventListener("click", async () => {
@@ -320,10 +495,95 @@
     if (state.refLink && navigator.clipboard) {
       navigator.clipboard.writeText(state.refLink);
       toast("Ссылка скопирована");
+      haptic("success");
     }
   });
 
   document.getElementById("gateRecheck").addEventListener("click", () => loadMe());
+
+  document.getElementById("admAction").addEventListener("change", (e) => {
+    updateAdminTariffSelect(e.target.value, state.admin || {});
+  });
+
+  document.getElementById("btnAdminSearch").addEventListener("click", async () => {
+    const r = await api("/api/admin/toggle-search", { method: "POST" });
+    toast(r.search_blocked ? "Поиск закрыт" : "Поиск открыт");
+    loadAdmin();
+    haptic("success");
+  });
+
+  document.getElementById("btnAdminGrant").addEventListener("click", async () => {
+    const action = document.getElementById("admAction").value;
+    const body = {
+      target_uid: parseInt(document.getElementById("admUid").value, 10),
+      action,
+    };
+    if (action === "plus_tariff" || action === "luck_tariff") {
+      body.tariff_key = document.getElementById("admTariff").value;
+    }
+    if (action === "plus_hours") {
+      body.hours = parseInt(document.getElementById("admHours").value, 10) || 24;
+    }
+    const r = await api("/api/admin/grant", { method: "POST", body: JSON.stringify(body) });
+    if (r.ok) {
+      toast(r.message || "Готово");
+      haptic("success");
+    } else {
+      const err = {
+        target_needs_plus: "Сначала выдайте PLUS",
+        unknown_tariff: "Неизвестный тариф",
+        invalid_uid: "Неверный ID",
+      };
+      toast(err[r.error] || r.error || "Ошибка");
+      haptic("error");
+    }
+  });
+
+  document.getElementById("btnAdminBc").addEventListener("click", async () => {
+    const text = document.getElementById("admBcText").value.trim();
+    if (!text) {
+      toast("Введите текст");
+      return;
+    }
+    if (!confirm("Запустить рассылку?")) return;
+    document.getElementById("btnAdminBc").disabled = true;
+    toast("Рассылка запущена…");
+    const r = await api("/api/admin/broadcast", {
+      method: "POST",
+      body: JSON.stringify({
+        mode: document.getElementById("admBcMode").value,
+        text,
+      }),
+    });
+    document.getElementById("btnAdminBc").disabled = false;
+    if (r.ok) {
+      toast(`Готово: ${r.sent} доставлено, ${r.failed} пропущено`);
+      haptic("success");
+    } else {
+      toast(r.error || "Ошибка");
+      haptic("error");
+    }
+  });
+
+  document.getElementById("btnAdminPromo").addEventListener("click", async () => {
+    const r = await api("/api/admin/promo", {
+      method: "POST",
+      body: JSON.stringify({
+        code: document.getElementById("admPromoCode").value,
+        kind: document.getElementById("admPromoKind").value,
+        max_uses: parseInt(document.getElementById("admPromoMax").value, 10) || 0,
+        plus_days: parseInt(document.getElementById("admPromoDays").value, 10) || 7,
+      }),
+    });
+    if (r.ok) {
+      toast(`Промокод ${r.code} создан`);
+      loadAdmin();
+      haptic("success");
+    } else {
+      toast(r.error || "Не создано");
+      haptic("error");
+    }
+  });
 
   loadMe().catch((e) => {
     console.error(e);

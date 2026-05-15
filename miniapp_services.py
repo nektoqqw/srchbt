@@ -12,6 +12,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from admin_panel import (
+    is_admin,
     legal_documents_user_html,
     luck_promo_entry_available,
     redeem_luck_code,
@@ -138,6 +139,7 @@ def cabinet_payload(db: Database, uid: int, settings: Settings) -> dict[str, Any
     rem = db.searches_remaining(uid, settings.free_search_limit)
     return {
         "user_id": uid,
+        "is_admin": is_admin(uid, settings),
         "is_plus": bool(int(u.is_plus)),
         "plus_expires": _format_expires(u.plus_expires_at),
         "has_luck": bool(db.is_luck(uid)),

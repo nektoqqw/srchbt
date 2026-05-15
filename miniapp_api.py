@@ -14,6 +14,14 @@ from channel_gate_aiogram import aiogram_get_channel_membership
 from config import Settings
 from db import Database
 from miniapp_auth import user_id_from_init_data
+from miniapp_admin import (
+    admin_broadcast,
+    admin_create_promo,
+    admin_dashboard,
+    admin_grant,
+    admin_toggle_search,
+    require_admin,
+)
 from miniapp_services import (
     cabinet_payload,
     create_checkout,
@@ -73,6 +81,16 @@ async def _require_user(request: web.Request) -> tuple[int, web.Response | None]
     uid = _uid_from_request(request)
     if uid is None:
         return 0, _json({"ok": False, "error": "unauthorized"}, 401)
+    return uid, None
+
+
+async def _require_admin(request: web.Request) -> tuple[int, web.Response | None]:
+    uid, err = await _require_user(request)
+    if err:
+        return 0, err
+    settings: Settings = request.app["settings"]
+    if not require_admin(uid, settings):
+        return 0, _json({"ok": False, "error": "forbidden"}, 403)
     return uid, None
 
 
@@ -271,6 +289,95 @@ async def api_documents(request: web.Request) -> web.Response:
     return _json({"ok": True, **documents_payload(db)})
 
 
+async def api_admin_dashboard(request: web.Request) -> web.Response:
+    uid, err = await _require_admin(request)
+    if err:
+        return err
+    db: Database = request.app["db"]
+    settings: Settings = request.app["settings"]
+    return _json(admin_dashboard(db, settings))
+
+
+async def api_admin_toggle_search(request: web.Request) -> web.Response:
+    uid, err = await _require_admin(request)
+    if err:
+        return err
+    db: Database = request.app["db"]
+    return _json(admin_toggle_search(db))
+
+
+async def api_admin_grant(request: web.Request) -> web.Response:
+    uid, err = await _require_admin(request)
+    if err:
+        return err
+    try:
+        body = await request.json()
+    except Exception:
+        return _json({"ok": False, "error": "invalid_json"}, 400)
+    if not isinstance(body, dict):
+        return _json({"ok": False, "error": "invalid_body"}, 400)
+    db: Database = request.app["db"]
+    return _json(
+        admin_grant(
+            db,
+            target_uid=int(body.get("target_uid") or 0),
+            action=str(body.get("action") or ""),
+            tariff_key=str(body.get("tariff_key") or ""),
+            hours=int(body.get("hours") or 0),
+        )
+    )
+
+
+async def api_admin_broadcast(request: web.Request) -> web.Response:
+    uid, err = await _require_admin(request)
+    if err:
+        return err
+    try:
+        body = await request.json()
+    except Exception:
+        return _json({"ok": False, "error": "invalid_json"}, 400)
+    if not isinstance(body, dict):
+        return _json({"ok": False, "error": "invalid_body"}, 400)
+    db: Database = request.app["db"]
+    settings: Settings = request.app["settings"]
+    return _json(
+        await admin_broadcast(
+            db,
+            settings,
+            mode=str(body.get("mode") or "all"),
+            text=str(body.get("text") or ""),
+            bot_token=settings.bot_token,
+        )
+    )
+
+
+async def api_admin_promo_create(request: web.Request) -> web.Response:
+    uid, err = await _require_admin(request)
+    if err:
+        return err
+    try:
+        body = await request.json()
+    except Exception:
+        return _json({"ok": False, "error": "invalid_json"}, 400)
+    if not isinstance(body, dict):
+        return _json({"ok": False, "error": "invalid_body"}, 400)
+    db: Database = request.app["db"]
+    pd = body.get("plus_days")
+    ph = body.get("plus_hours")
+    lh = body.get("luck_hours")
+    return _json(
+        admin_create_promo(
+            db,
+            code=str(body.get("code") or ""),
+            kind=str(body.get("kind") or "plus"),
+            max_uses=int(body.get("max_uses") or 0),
+            plus_days=int(pd) if pd is not None else None,
+            plus_hours=int(ph) if ph is not None else None,
+            luck_hours=int(lh) if lh is not None else None,
+        )
+    )
+
+
 async def api_sync_payments(request: web.Request) -> web.Response:
     uid, err = await _require_user(request)
     if err:
@@ -309,5 +416,10 @@ def setup_miniapp_routes(app: web.Application) -> None:
     app.router.add_get("/api/referral", api_referral)
     app.router.add_get("/api/documents", api_documents)
     app.router.add_post("/api/payments/sync", api_sync_payments)
+    app.router.add_get("/api/admin/dashboard", api_admin_dashboard)
+    app.router.add_post("/api/admin/toggle-search", api_admin_toggle_search)
+    app.router.add_post("/api/admin/grant", api_admin_grant)
+    app.router.add_post("/api/admin/broadcast", api_admin_broadcast)
+    app.router.add_post("/api/admin/promo", api_admin_promo_create)
 
     log.info("Mini App routes: /app/ static=%s", _STATIC)
