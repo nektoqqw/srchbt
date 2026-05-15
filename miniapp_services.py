@@ -384,19 +384,19 @@ async def run_valuation(
         frag = None
         if t in listed_map and listed_map[t] is not None:
             frag = bool(listed_map[t])
-        ri, pred, _ = combined_rarity(t, db, ton_to_usd=settings.ton_to_usd)
+        ri, pred, why = combined_rarity(t, db, ton_to_usd=settings.ton_to_usd)
+        price = pred if pred is not None else rep.estimated_price_usd
         items.append(
             {
                 "username": t,
-                "price_usd": rep.estimated_price_usd,
-                "rarity": rep.rarity_name,
+                "price_usd": price,
+                "rarity": ri.name,
+                "why": why,
                 "rank": rep.rank_10,
                 "stars": rep.stars_5,
                 "pros": rep.pros,
                 "cons": rep.cons,
                 "fragment_listed": frag,
-                "combined_rarity": ri.name,
-                "predicted_roll_usd": pred,
             }
         )
     return {"ok": True, "items": items}

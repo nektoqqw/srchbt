@@ -62,6 +62,18 @@
     return data;
   }
 
+  function rarityPillClass(name) {
+    const map = {
+      Обычный: "rarity-common",
+      Редкий: "rarity-rare",
+      Эпический: "rarity-epic",
+      Мифический: "rarity-mythic",
+      Легендарный: "rarity-legend",
+      Элитный: "rarity-elite",
+    };
+    return map[name] || "rarity-common";
+  }
+
   function escapeHtml(s) {
     return String(s)
       .replace(/&/g, "&amp;")
@@ -411,10 +423,13 @@
       resultEl.className = "result-card found";
       haptic("success");
       const why = r.why ? `<p class="caption roll-why">${escapeHtml(r.why)}</p>` : "";
+      const rc = rarityPillClass(r.rarity);
       resultEl.innerHTML = `
         <p class="username">@${r.username}</p>
-        <p>Редкость: <b>${r.rarity}</b></p>
-        <p>Ориентир: <b>$${(r.price_usd || 0).toLocaleString()}</b></p>
+        <div class="result-metrics">
+          <span class="rarity-pill ${rc}">${escapeHtml(r.rarity || "—")}</span>
+          <span class="price-pill">~ $${(r.price_usd || 0).toLocaleString()}</span>
+        </div>
         ${why}
         <p class="caption">${r.attempts} попыток</p>
         ${state.me.is_plus ? `<button type="button" class="btn btn-plain btn-block" id="btnSaveRoll">Сохранить @ник</button>` : ""}
@@ -546,9 +561,17 @@
             : it.fragment_listed === false
               ? "нет лота"
               : "";
+        const rc = rarityPillClass(it.rarity);
+        const why = it.why
+          ? `<p class="caption">${escapeHtml(it.why)}</p>`
+          : "";
         return `<div class="val-card">
-          <strong>@${it.username}</strong>
-          <p>$${it.price_usd != null ? it.price_usd.toLocaleString() : "?"} · ${it.rarity}</p>
+          <div class="val-card-top">
+            <strong>@${escapeHtml(it.username)}</strong>
+            <span class="rarity-pill ${rc}">${escapeHtml(it.rarity || "—")}</span>
+          </div>
+          <p class="val-price">Ориентир: <b>$${it.price_usd != null ? it.price_usd.toLocaleString() : "?"}</b></p>
+          ${why}
           <p class="caption">⭐ ${it.stars}/5 · ${frag}</p>
         </div>`;
       })

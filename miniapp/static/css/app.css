@@ -1,7 +1,7 @@
 :root {
-  --bg: #000000;
-  --bg-elevated: #1c1c1e;
-  --bg-grouped: #2c2c2e;
+  --bg: #0c0c0f;
+  --bg-elevated: #1a1a1f;
+  --bg-grouped: #25252b;
   --separator: rgba(84, 84, 88, 0.65);
   --label: #ffffff;
   --label-secondary: rgba(235, 235, 245, 0.6);
@@ -49,8 +49,8 @@ body {
   pointer-events: none;
   z-index: 0;
   background:
-    radial-gradient(ellipse 90% 55% at 50% -5%, rgba(191, 90, 242, 0.28), transparent 55%),
-    radial-gradient(ellipse 50% 35% at 100% 100%, rgba(48, 209, 88, 0.08), transparent),
+    radial-gradient(ellipse 90% 50% at 50% -8%, rgba(191, 90, 242, 0.2), transparent 58%),
+    radial-gradient(ellipse 45% 30% at 100% 100%, rgba(48, 209, 88, 0.06), transparent),
     var(--bg);
 }
 
@@ -149,7 +149,8 @@ body {
   border-radius: var(--radius-lg);
   padding: 16px;
   margin-bottom: 12px;
-  border: 0.5px solid var(--separator);
+  border: 0.5px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25);
 }
 
 .section-title {
@@ -515,8 +516,78 @@ body {
 .result-card .username {
   font-size: 28px;
   font-weight: 700;
-  margin: 0 0 8px;
+  margin: 0 0 10px;
   word-break: break-all;
+}
+
+.result-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.rarity-pill {
+  display: inline-block;
+  padding: 5px 11px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.rarity-common {
+  background: rgba(142, 142, 147, 0.35);
+  color: #e5e5ea;
+}
+.rarity-rare {
+  background: rgba(10, 132, 255, 0.35);
+  color: #b3d7ff;
+}
+.rarity-epic {
+  background: rgba(191, 90, 242, 0.38);
+  color: #f0d4ff;
+}
+.rarity-mythic {
+  background: rgba(255, 159, 10, 0.35);
+  color: #ffe4b0;
+}
+.rarity-legend {
+  background: rgba(255, 69, 58, 0.32);
+  color: #ffc9c5;
+}
+.rarity-elite {
+  background: rgba(255, 214, 10, 0.35);
+  color: #fff3b0;
+}
+
+.price-pill {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--green);
+}
+
+.roll-why {
+  line-height: 1.45;
+  opacity: 0.9;
+}
+
+.val-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.val-card-top strong {
+  font-size: 17px;
+}
+
+.val-price {
+  margin: 0 0 4px;
+  font-size: 15px;
 }
 
 .tariff-list {
@@ -589,8 +660,9 @@ body {
 .val-card {
   background: var(--bg-grouped);
   border-radius: var(--radius);
-  padding: 12px;
-  margin-bottom: 8px;
+  padding: 14px;
+  margin-bottom: 10px;
+  border: 0.5px solid rgba(255, 255, 255, 0.06);
 }
 
 .docs {

@@ -254,7 +254,7 @@ def _ui_frag_found(
                 rarity_name=rarity_name,
                 predicted_price=predicted_price,
                 why=why or "",
-                show_explanation=False,
+                show_explanation=True,
             )
             + "\n\n"
         )

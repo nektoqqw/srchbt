@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 from db import Database
 from english_dictionary import is_english_dictionary_word
-from username_rarity import combined_rarity
+from username_rarity import combined_rarity, orientational_price_usd, price_band_for_username
 
 _VOWELS = set("aeiou")
 def fragment_listing_usd_band_by_length(length: int) -> tuple[int, int] | None:
@@ -208,15 +208,21 @@ def evaluate_username_market(
 
     stars = max(1, min(5, int(math.ceil(rank / 2))))
 
-    band = fragment_listing_usd_band_by_length(len(uname))
+    band = price_band_for_username(uname) or fragment_listing_usd_band_by_length(
+        len(uname)
+    )
     if band:
         lo, hi = band
         length_market_band = (
-            f"Ориентир по длине ({len(uname)} симв.): на Fragment похожие лоты "
-            f"часто держатся в районе <b>${lo:,}–${hi:,}</b> (оценочно)."
+            f"Ориентир по длине ({len(uname)} симв.): "
+            f"<b>${lo:,}–${hi:,}</b> (оценочно, не гарантия продажи)."
         )
     else:
         length_market_band = ""
+    if predicted_price is None and band:
+        p2, _ = orientational_price_usd(uname)
+        if p2 is not None:
+            predicted_price = p2
 
     return UsernameValuation(
         username=uname,
