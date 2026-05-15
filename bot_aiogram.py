@@ -310,6 +310,130 @@ BTN_DOCS = "📄 Документы"
 BTN_ADMIN = "⚙️ Админ"
 BTN_REFERRAL = "🤝 Рефералка"
 
+# Старые подписи reply-клавиатуры (фиолетовая тема) — сводим к текущим константам
+_LEGACY_MENU_ALIASES_FRAG: Final[dict[str, str]] = {
+    "🟪 Крутить": BTN_SEARCH_F,
+    "🟣 Крутить": BTN_SEARCH_F,
+    "💜 Аккаунт": BTN_CABINET_F,
+    "🟣 Аккаунт": BTN_CABINET_F,
+    "💚 Аккаунт": BTN_CABINET_F,
+    "🟪 Подписка PLUS": BTN_PLUS_F,
+    "🟣 Подписка PLUS": BTN_PLUS_F,
+    "💚 Подписка PLUS": BTN_PLUS_F,
+    "💚 Удача": BTN_LUCK_F,
+    "🌿 Удача": BTN_LUCK_F,
+    "💚 Оценка ника": BTN_VALUATE_F,
+    "🟪 Оценка ника": BTN_VALUATE_F,
+    "💜 Оценка ника": BTN_VALUATE_F,
+    "💚 Поддержка": BTN_SUPPORT_F,
+    "🟪 Поддержка": BTN_SUPPORT_F,
+    "💚 Документы": BTN_DOCS_F,
+    "🟪 Документы": BTN_DOCS_F,
+    "💚 Рефералка": BTN_REFERRAL_F,
+    "🟪 Рефералка": BTN_REFERRAL_F,
+    "🟣 Админ": BTN_ADMIN_F,
+    "💚 Админ": BTN_ADMIN_F,
+}
+_LEGACY_MENU_ALIASES_V2: Final[dict[str, str]] = {
+    "🟪 Крутить": BTN_ROLL,
+    "🟣 Крутить": BTN_ROLL,
+    "💜 Аккаунт": BTN_CABINET,
+    "🟣 Аккаунт": BTN_CABINET,
+    "💚 Аккаунт": BTN_CABINET,
+    "🟪 Подписка PLUS": BTN_PLUS,
+    "🟣 Подписка PLUS": BTN_PLUS,
+    "💚 Подписка PLUS": BTN_PLUS,
+    "💚 Удача": BTN_LUCK,
+    "🌿 Удача": BTN_LUCK,
+    "💚 Оценка ника": BTN_VALUATE,
+    "🟪 Оценка ника": BTN_VALUATE,
+    "💜 Оценка ника": BTN_VALUATE,
+    "💚 Поддержка": BTN_SUPPORT,
+    "🟪 Поддержка": BTN_SUPPORT,
+    "💚 Документы": BTN_DOCS,
+    "🟪 Документы": BTN_DOCS,
+    "💚 Рефералка": BTN_REFERRAL,
+    "🟪 Рефералка": BTN_REFERRAL,
+    "🟣 Админ": BTN_ADMIN,
+    "💚 Админ": BTN_ADMIN,
+    "💚 Лидеры": BTN_TOP,
+    "🟪 Лидеры": BTN_TOP,
+}
+
+_MENU_SUFFIX_FRAG: Final[dict[str, str]] = {
+    "Крутить": BTN_SEARCH_F,
+    "Оценка ника": BTN_VALUATE_F,
+    "Аккаунт": BTN_CABINET_F,
+    "Личный кабинет": BTN_CABINET_F,
+    "Поддержка": BTN_SUPPORT_F,
+    "Подписка PLUS": BTN_PLUS_F,
+    "Удача": BTN_LUCK_F,
+    "Документы": BTN_DOCS_F,
+    "Рефералка": BTN_REFERRAL_F,
+    "Админ": BTN_ADMIN_F,
+}
+_MENU_SUFFIX_V2: Final[dict[str, str]] = {
+    "Крутить": BTN_ROLL,
+    "Ролл по ценности": BTN_ROLL,
+    "Оценка ника": BTN_VALUATE,
+    "Проверить и оценить": BTN_VALUATE,
+    "Аккаунт": BTN_CABINET,
+    "Личный кабинет": BTN_CABINET,
+    "Поддержка": BTN_SUPPORT,
+    "Подписка PLUS": BTN_PLUS,
+    "Удача": BTN_LUCK,
+    "Документы": BTN_DOCS,
+    "Рефералка": BTN_REFERRAL,
+    "Админ": BTN_ADMIN,
+    "Лидеры": BTN_TOP,
+    "Топ за месяц": BTN_TOP,
+}
+
+
+def _normalize_menu_text(text: str, *, fragment: bool) -> str:
+    """Сопоставить нажатие reply-кнопки с актуальной константой (старые эмодзи тоже)."""
+    t = text.strip()
+    if not t:
+        return t
+    legacy = _LEGACY_MENU_ALIASES_FRAG if fragment else _LEGACY_MENU_ALIASES_V2
+    if t in legacy:
+        return legacy[t]
+    canon = (
+        {
+            BTN_SEARCH_F,
+            BTN_VALUATE_F,
+            BTN_CABINET_F,
+            BTN_SUPPORT_F,
+            BTN_PLUS_F,
+            BTN_LUCK_F,
+            BTN_DOCS_F,
+            BTN_REFERRAL_F,
+            BTN_ADMIN_F,
+        }
+        if fragment
+        else {
+            BTN_ROLL,
+            BTN_VALUATE,
+            BTN_TOP,
+            BTN_CABINET,
+            BTN_SUPPORT,
+            BTN_PLUS,
+            BTN_LUCK,
+            BTN_DOCS,
+            BTN_REFERRAL,
+            BTN_ADMIN,
+        }
+    )
+    if t in canon:
+        return t
+    if " " in t:
+        suffix = t.split(" ", 1)[1]
+        suffix_map = _MENU_SUFFIX_FRAG if fragment else _MENU_SUFFIX_V2
+        if suffix in suffix_map:
+            return suffix_map[suffix]
+    return t
+
+
 _TEXT_START: Final[frozenset[str]] = frozenset({"старт", "start", "начать"})
 PENDING_PROMO: dict[int, bool] = {}
 PENDING_LUCK_PROMO: dict[int, bool] = {}
@@ -1649,7 +1773,7 @@ async def cmd_start_frag(message: Message, db: Database, settings: Settings) -> 
 async def on_text_frag(message: Message, db: Database, settings: Settings, checker: Any) -> None:
     assert message.text and message.from_user
     uid = message.from_user.id
-    text = message.text.strip()
+    text = _normalize_menu_text(message.text, fragment=True)
 
     if await admin_try_handle_text(
         message,
@@ -2653,7 +2777,7 @@ async def on_text_v2(
 ) -> None:
     assert message.text and message.from_user
     uid = message.from_user.id
-    text = message.text.strip()
+    text = _normalize_menu_text(message.text, fragment=False)
     ud = _sess[uid]
 
     if await admin_try_handle_text(
