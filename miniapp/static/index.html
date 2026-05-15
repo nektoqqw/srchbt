@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>Амням</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="stylesheet" href="/app/static/css/app.css" />
+</head>
+<body>
+  <div class="bg-glow" aria-hidden="true"></div>
+  <div id="app" class="app">
+    <header class="top">
+      <div class="logo">Амням</div>
+      <p class="tagline">подбор · оценка · PLUS</p>
+    </header>
+
+    <section id="gate" class="panel gate hidden">
+      <h2>Канал</h2>
+      <p id="gateText">Подпишитесь на канал, чтобы пользоваться приложением.</p>
+      <a id="gateLink" class="btn primary" href="#" target="_blank">Подписаться</a>
+      <button type="button" class="btn ghost" id="gateRecheck">Я подписался — проверить</button>
+    </section>
+
+    <main id="main" class="main hidden">
+      <nav class="tabs" role="tablist">
+        <button type="button" class="tab active" data-tab="home">🏠</button>
+        <button type="button" class="tab" data-tab="roll">🎰</button>
+        <button type="button" class="tab" data-tab="valuate">💰</button>
+        <button type="button" class="tab" data-tab="shop">♠️</button>
+        <button type="button" class="tab" data-tab="more">⋯</button>
+      </nav>
+
+      <div id="tab-home" class="tab-pane active">
+        <div class="card hero">
+          <div class="stat-grid" id="stats"></div>
+          <button type="button" class="btn ghost sm" id="btnSyncPay">↻ Проверить оплаты</button>
+        </div>
+      </div>
+
+      <div id="tab-roll" class="tab-pane">
+        <div class="card">
+          <h2>Крутить</h2>
+          <p class="muted">Свободный @ник латиницей, длина 5–7</p>
+          <div class="len-row">
+            <button type="button" class="chip len active" data-len="5">5</button>
+            <button type="button" class="chip len" data-len="6">6</button>
+            <button type="button" class="chip len" data-len="7">7</button>
+          </div>
+          <div id="filtersBlock" class="filters hidden">
+            <h3>Фильтры PLUS</h3>
+            <label>Префикс (до 2 букв)</label>
+            <input id="fPre" maxlength="2" autocomplete="off" />
+            <label>Суффикс</label>
+            <input id="fSuf" maxlength="2" autocomplete="off" />
+            <label>Цифры</label>
+            <select id="fDig">
+              <option value="any">Любые</option>
+              <option value="yes">С цифрами</option>
+              <option value="no">Без цифр</option>
+            </select>
+            <button type="button" class="btn ghost sm" id="btnSaveFilters">Сохранить фильтры</button>
+          </div>
+          <button type="button" class="btn primary block" id="btnRoll">Запустить подбор</button>
+          <div id="rollProgress" class="progress hidden">
+            <div class="bar"><div class="fill" id="rollBar"></div></div>
+            <p id="rollStatus" class="muted">Ищем…</p>
+          </div>
+          <div id="rollResult" class="result hidden"></div>
+        </div>
+      </div>
+
+      <div id="tab-valuate" class="tab-pane">
+        <div class="card">
+          <h2>Оценка ника</h2>
+          <textarea id="valInput" rows="3" placeholder="crypto, wolf, ninja"></textarea>
+          <button type="button" class="btn primary block" id="btnValuate">Оценить</button>
+          <div id="valResults" class="stack"></div>
+        </div>
+      </div>
+
+      <div id="tab-shop" class="tab-pane">
+        <div class="card">
+          <h2>Подписка PLUS</h2>
+          <div id="plusTariffs" class="tariff-grid"></div>
+          <h2 class="mt">Удача</h2>
+          <p class="muted">Тарифы удачи — при активном PLUS</p>
+          <div id="luckTariffs" class="tariff-grid"></div>
+          <div class="promo-row">
+            <input id="promoCode" placeholder="Промокод" />
+            <select id="promoKind">
+              <option value="plus">PLUS</option>
+              <option value="luck">Удача</option>
+            </select>
+            <button type="button" class="btn ghost" id="btnPromo">OK</button>
+          </div>
+          <button type="button" class="btn ghost block" id="btnLuckToggle">Пауза «Удачи» в подборе</button>
+        </div>
+      </div>
+
+      <div id="tab-more" class="tab-pane">
+        <div class="card">
+          <h2>Рефералка</h2>
+          <p id="refLink" class="mono"></p>
+          <p id="refCount" class="muted"></p>
+          <button type="button" class="btn ghost sm" id="btnCopyRef">Скопировать ссылку</button>
+        </div>
+        <div class="card">
+          <h2>Сохранённые @ники</h2>
+          <p class="muted">Только для PLUS</p>
+          <ul id="savedList" class="list"></ul>
+        </div>
+        <div class="card">
+          <h2>Документы</h2>
+          <div id="docsHtml" class="docs"></div>
+        </div>
+        <div class="card">
+          <h2>Поддержка</h2>
+          <a id="supportLink" class="btn ghost block" href="https://t.me/amnyam_supportt">@amnyam_supportt</a>
+        </div>
+      </div>
+    </main>
+
+    <div id="toast" class="toast hidden"></div>
+  </div>
+  <script src="/app/static/js/app.js"></script>
+</body>
+</html>

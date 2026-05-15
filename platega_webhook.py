@@ -27,6 +27,11 @@ from db import Database
 from platega_apply import apply_platega_purchase
 from platega_sync import paid_amount_from_json, transaction_id_from_json, transaction_status_from_json
 
+try:
+    from miniapp_api import setup_miniapp_routes
+except ImportError:
+    setup_miniapp_routes = None  # type: ignore
+
 log = logging.getLogger(__name__)
 
 
@@ -139,6 +144,13 @@ async def platega_callback(request: web.Request) -> web.Response:
 async def _on_startup(app: web.Application) -> None:
     # ClientSession нельзя создавать в sync main() — в aiohttp 3.9+ нужен running loop.
     app["http_session"] = ClientSession()
+    bot = app.get("bot")
+    if bot:
+        try:
+            me = await bot.get_me()
+            app["bot_username"] = (me.username or "").strip()
+        except Exception:
+            log.exception("get_me on startup")
 
 
 async def _on_cleanup(app: web.Application) -> None:
@@ -165,9 +177,19 @@ def main() -> None:
     app = web.Application()
     app["settings"] = settings
     app["db"] = db
+    try:
+        from aiogram import Bot
+
+        app["bot"] = Bot(settings.bot_token)
+    except Exception:
+        app["bot"] = None
+        log.warning("Aiogram Bot недоступен — проверка канала в Mini App отключена")
     app.on_startup.append(_on_startup)
     app.on_cleanup.append(_on_cleanup)
     app.router.add_post(path, platega_callback)
+    if setup_miniapp_routes is not None:
+        setup_miniapp_routes(app)
+        log.info("Mini App: маршруты /app и /api подключены")
 
     host = (os.environ.get("PLATEGA_WEBHOOK_HOST") or "0.0.0.0").strip()
     try:

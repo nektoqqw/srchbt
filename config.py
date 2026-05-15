@@ -86,6 +86,8 @@ class Settings:
     platega_failed_url: str = ""
     # Если задано (>0): в Platega и в platega_orders уходит эта сумма вместо цены тарифа (для теста). Потом убрать из .env.
     platega_test_amount_rub: float | None = None
+    # HTTPS URL Mini App, например https://example.com/app
+    miniapp_public_url: str = ""
 
 
 def load_settings() -> Settings:
@@ -227,6 +229,13 @@ def load_settings() -> Settings:
         except ValueError:
             pass
 
+    miniapp_public_url = (os.environ.get("MINIAPP_URL") or os.environ.get("MINIAPP_PUBLIC_URL") or "").strip().rstrip("/")
+    if miniapp_public_url and not miniapp_public_url.endswith("/app"):
+        if not miniapp_public_url.endswith("/"):
+            miniapp_public_url += "/"
+        if not miniapp_public_url.endswith("/app/"):
+            miniapp_public_url = miniapp_public_url.rstrip("/") + "/app"
+
     return Settings(
         bot_token=token,
         api_id=api_id_int,
@@ -259,4 +268,5 @@ def load_settings() -> Settings:
         platega_return_url=platega_return_url,
         platega_failed_url=platega_failed_url,
         platega_test_amount_rub=platega_test_amount_rub,
+        miniapp_public_url=miniapp_public_url,
     )

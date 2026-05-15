@@ -34,8 +34,10 @@ from aiogram.types import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     KeyboardButton,
+    MenuButtonWebApp,
     Message,
     ReplyKeyboardMarkup,
+    WebAppInfo,
 )
 from aiogram.types.error_event import ErrorEvent
 
@@ -3660,6 +3662,18 @@ async def aiogram_main() -> None:
             "Aiogram запущен, BOT_MODE=%s",
             mode,
         )
+        miniapp_url = (settings.miniapp_public_url or "").strip()
+        if miniapp_url:
+            try:
+                await bot.set_chat_menu_button(
+                    menu_button=MenuButtonWebApp(
+                        text="Открыть Амням",
+                        web_app=WebAppInfo(url=miniapp_url),
+                    )
+                )
+                log.info("Mini App menu button: %s", miniapp_url)
+            except Exception:
+                log.exception("set_chat_menu_button Mini App")
 
     async def shutdown() -> None:
         if getattr(checker, "uses_telethon", False):
