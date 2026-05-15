@@ -19,6 +19,7 @@ import re
 import string
 import sys
 import time
+import unicodedata
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from collections import defaultdict
@@ -390,40 +391,51 @@ _MENU_SUFFIX_V2: Final[dict[str, str]] = {
 }
 
 
-def _normalize_menu_text(text: str, *, fragment: bool) -> str:
-    """Сопоставить нажатие reply-кнопки с актуальной константой (старые эмодзи тоже)."""
-    t = text.strip()
+_FRAG_MENU_BTNS: Final[frozenset[str]] = frozenset(
+    {
+        BTN_SEARCH_F,
+        BTN_VALUATE_F,
+        BTN_CABINET_F,
+        BTN_SUPPORT_F,
+        BTN_PLUS_F,
+        BTN_LUCK_F,
+        BTN_DOCS_F,
+        BTN_REFERRAL_F,
+        BTN_ADMIN_F,
+    }
+)
+_V2_MENU_BTNS: Final[frozenset[str]] = frozenset(
+    {
+        BTN_ROLL,
+        BTN_VALUATE,
+        BTN_TOP,
+        BTN_CABINET,
+        BTN_SUPPORT,
+        BTN_PLUS,
+        BTN_LUCK,
+        BTN_DOCS,
+        BTN_REFERRAL,
+        BTN_ADMIN,
+    }
+)
+
+
+def _clear_input_modes(uid: int) -> None:
+    PENDING_PROMO.pop(uid, None)
+    PENDING_LUCK_PROMO.pop(uid, None)
+    _sess[uid].pop("await_valuation", None)
+    _sess[uid].pop("await_username", None)
+
+
+def _match_menu_button(raw: str, *, fragment: bool) -> str | None:
+    """Распознать reply-кнопку меню (любой эмодзи / старая клавиатура)."""
+    t = unicodedata.normalize("NFKC", (raw or "").strip())
     if not t:
-        return t
+        return None
     legacy = _LEGACY_MENU_ALIASES_FRAG if fragment else _LEGACY_MENU_ALIASES_V2
     if t in legacy:
         return legacy[t]
-    canon = (
-        {
-            BTN_SEARCH_F,
-            BTN_VALUATE_F,
-            BTN_CABINET_F,
-            BTN_SUPPORT_F,
-            BTN_PLUS_F,
-            BTN_LUCK_F,
-            BTN_DOCS_F,
-            BTN_REFERRAL_F,
-            BTN_ADMIN_F,
-        }
-        if fragment
-        else {
-            BTN_ROLL,
-            BTN_VALUATE,
-            BTN_TOP,
-            BTN_CABINET,
-            BTN_SUPPORT,
-            BTN_PLUS,
-            BTN_LUCK,
-            BTN_DOCS,
-            BTN_REFERRAL,
-            BTN_ADMIN,
-        }
-    )
+    canon = _FRAG_MENU_BTNS if fragment else _V2_MENU_BTNS
     if t in canon:
         return t
     if " " in t:
@@ -431,7 +443,48 @@ def _normalize_menu_text(text: str, *, fragment: bool) -> str:
         suffix_map = _MENU_SUFFIX_FRAG if fragment else _MENU_SUFFIX_V2
         if suffix in suffix_map:
             return suffix_map[suffix]
-    return t
+    low = t.casefold()
+    if fragment:
+        if "крутить" in low:
+            return BTN_SEARCH_F
+        if "оценка" in low and "ник" in low:
+            return BTN_VALUATE_F
+        if "аккаунт" in low or ("личный" in low and "кабинет" in low):
+            return BTN_CABINET_F
+        if "подписка" in low and "plus" in low:
+            return BTN_PLUS_F
+        if "удача" in low:
+            return BTN_LUCK_F
+        if "поддержк" in low:
+            return BTN_SUPPORT_F
+        if "документ" in low:
+            return BTN_DOCS_F
+        if "реферал" in low:
+            return BTN_REFERRAL_F
+        if "админ" in low:
+            return BTN_ADMIN_F
+    else:
+        if "крутить" in low or "ролл" in low or "ценност" in low:
+            return BTN_ROLL
+        if "оценка" in low or "проверить" in low:
+            return BTN_VALUATE
+        if "лидер" in low or "топ" in low:
+            return BTN_TOP
+        if "аккаунт" in low or ("личный" in low and "кабинет" in low):
+            return BTN_CABINET
+        if "подписка" in low and "plus" in low:
+            return BTN_PLUS
+        if "удача" in low:
+            return BTN_LUCK
+        if "поддержк" in low:
+            return BTN_SUPPORT
+        if "документ" in low:
+            return BTN_DOCS
+        if "реферал" in low:
+            return BTN_REFERRAL
+        if "админ" in low:
+            return BTN_ADMIN
+    return None
 
 
 _TEXT_START: Final[frozenset[str]] = frozenset({"старт", "start", "начать"})
@@ -1770,10 +1823,234 @@ async def cmd_start_frag(message: Message, db: Database, settings: Settings) -> 
     )
 
 
+async def _dispatch_fragment_menu(
+    message: Message,
+    btn: str,
+    *,
+    uid: int,
+    db: Database,
+    settings: Settings,
+    checker: Any,
+) -> None:
+    kb = kb_fragment_main(uid=uid, settings=settings)
+    if btn == BTN_ADMIN_F:
+        if uid not in settings.admin_ids:
+            await message.answer(
+                "<b>Нет доступа.</b> Клавиша только для администратора.",
+                reply_markup=kb,
+                parse_mode="HTML",
+            )
+            return
+        await cmd_admin(message, db=db, settings=settings)
+        return
+    if btn == BTN_SEARCH_F:
+        if db.is_search_globally_blocked() and uid not in settings.admin_ids:
+            await message.answer(
+                "<b>Стол на паузе.</b>\n\n"
+                "Поиск никнеймов временно закрыт администратором для всех гостей. "
+                "Оценка ников и остальное меню работают.",
+                reply_markup=kb,
+                parse_mode="HTML",
+            )
+            return
+        if not db.can_search(uid, settings.free_search_limit):
+            await message.answer(
+                "<b>Нет попыток.</b>\n"
+                "Бесплатные крутки закончились. Оформи <b>Подписка PLUS</b>.",
+                reply_markup=kb,
+                parse_mode="HTML",
+            )
+            return
+        await message.answer(
+            _ui_frag_pick_length(),
+            reply_markup=kb_fragment_lengths(uid=uid, db=db),
+            parse_mode="HTML",
+        )
+        return
+    if btn == BTN_VALUATE_F:
+        _sess[uid]["await_valuation"] = True
+        await message.answer(
+            "<b>Оценка @ника</b>\n\n"
+            "Пришли одним сообщением один или несколько ников, например:\n"
+            "<code>crypto, @wolf, ninja</code>\n\n"
+            "<i>Оценка не расходует бесплатные подборы.</i>",
+            reply_markup=kb,
+            parse_mode="HTML",
+        )
+        return
+    if btn == BTN_CABINET_F:
+        await message.answer(
+            await cabinet_text_frag(db, uid, settings),
+            reply_markup=kb,
+            parse_mode="HTML",
+        )
+        await message.answer(
+            "<i>Сохранённые ники и фильтры — кнопки ниже.</i>",
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text="📂 Сохранённые ники", callback_data="cab:saved"
+                        )
+                    ],
+                    [
+                        InlineKeyboardButton(
+                            text="◀ В меню", callback_data="cab:back_frag"
+                        )
+                    ],
+                ]
+            ),
+            parse_mode="HTML",
+        )
+        return
+    if btn == BTN_REFERRAL_F:
+        await answer_referral_program(message, db, settings)
+        return
+    if btn == BTN_SUPPORT_F:
+        await message.answer(
+            f"<b>Поддержка</b> · {html.escape(AMNYAM)}\n\n"
+            "Если заметили проблему или у вас появился вопрос — напишите в нашу поддержку @amnyam_supportt.",
+            reply_markup=kb,
+            parse_mode="HTML",
+        )
+        return
+    if btn == BTN_DOCS_F:
+        await message.answer(
+            legal_documents_user_html(db),
+            reply_markup=kb,
+            parse_mode="HTML",
+            disable_web_page_preview=True,
+        )
+        return
+    if btn == BTN_PLUS_F:
+        await message.answer(
+            _plus_shop_html(db, uid),
+            reply_markup=kb_plus_tariffs(),
+            parse_mode="HTML",
+        )
+        return
+    if btn == BTN_LUCK_F:
+        await message.answer(
+            _luck_menu_html(uid, db, BTN_SEARCH_F),
+            reply_markup=_luck_menu_inline_kb(uid, db, settings),
+            parse_mode="HTML",
+        )
+        return
+
+
+async def _dispatch_v2_menu(
+    message: Message,
+    btn: str,
+    *,
+    uid: int,
+    db: Database,
+    settings: Settings,
+    checker: Any,
+) -> None:
+    ud = _sess[uid]
+    kb = kb_v2_main(uid=uid, settings=settings)
+    if btn == BTN_ADMIN:
+        if uid not in settings.admin_ids:
+            await message.answer(
+                "<b>Нет доступа.</b> Клавиша только для администратора.",
+                reply_markup=kb,
+                parse_mode="HTML",
+            )
+            return
+        await cmd_admin(message, db=db, settings=settings)
+        return
+    if btn == BTN_ROLL:
+        if db.is_search_globally_blocked() and uid not in settings.admin_ids:
+            await message.answer(
+                "<b>Подбор на паузе.</b>\n\n"
+                "Поиск никнеймов временно закрыт администратором. Оценка и остальное доступны.",
+                reply_markup=kb,
+                parse_mode="HTML",
+            )
+            return
+        ud.pop("roll_len", None)
+        ud.pop("roll_tier", None)
+        await message.answer(
+            _roll_pick_intro_html(),
+            reply_markup=kb_v2_lengths(),
+            parse_mode="HTML",
+        )
+        return
+    if btn == BTN_VALUATE:
+        ud["await_username"] = True
+        await message.answer(
+            "<b>Оценка никнейма</b>\n\n"
+            "Отправьте один или несколько ников в сообщении, например:\n"
+            "<code>crypto, @wolf, ninja</code>\n\n"
+            "<i>Не расходует бесплатные подборы. Для одного ника — карточка с кнопками внизу.</i>",
+            reply_markup=kb,
+            parse_mode="HTML",
+        )
+        return
+    if btn == BTN_TOP:
+        top = db.top_roll_month(days=30, limit=10)
+        if not top:
+            await message.answer(
+                f"<b>Рейтинг пуст.</b> Сделайте несколько подборов через «{html.escape(BTN_ROLL)}».",
+                reply_markup=kb,
+                parse_mode="HTML",
+            )
+            return
+        lines = ["<b>Топ за 30 дней</b>", ""]
+        for i, (uname, rarity, pred) in enumerate(top, start=1):
+            usd_txt = "?" if pred is None else f"${pred:,.0f}"
+            lines.append(
+                f"{i}. @{html.escape(uname)} — <b>{html.escape(rarity)}</b> ({usd_txt})"
+            )
+        await message.answer("\n".join(lines), reply_markup=kb, parse_mode="HTML")
+        return
+    if btn == BTN_CABINET:
+        await message.answer(
+            await cabinet_text_v2(db, uid, settings),
+            reply_markup=kb,
+            parse_mode="HTML",
+        )
+        await message.answer(
+            "<i>Сохранённые ники — кнопки ниже.</i>",
+            reply_markup=kb_v2_cabinet(),
+            parse_mode="HTML",
+        )
+        return
+    if btn == BTN_REFERRAL:
+        await answer_referral_program(message, db, settings)
+        return
+    if btn == BTN_SUPPORT:
+        await cmd_support_v2(message, settings)
+        return
+    if btn == BTN_DOCS:
+        await message.answer(
+            legal_documents_user_html(db),
+            reply_markup=kb,
+            parse_mode="HTML",
+            disable_web_page_preview=True,
+        )
+        return
+    if btn == BTN_PLUS:
+        await message.answer(
+            _plus_shop_html(db, uid),
+            reply_markup=kb_plus_tariffs(),
+            parse_mode="HTML",
+        )
+        return
+    if btn == BTN_LUCK:
+        await message.answer(
+            _luck_menu_html(uid, db, BTN_ROLL),
+            reply_markup=_luck_menu_inline_kb(uid, db, settings),
+            parse_mode="HTML",
+        )
+        return
+
+
 async def on_text_frag(message: Message, db: Database, settings: Settings, checker: Any) -> None:
     assert message.text and message.from_user
     uid = message.from_user.id
-    text = _normalize_menu_text(message.text, fragment=True)
+    raw_text = message.text
+    menu_btn = _match_menu_button(raw_text, fragment=True)
 
     if await admin_try_handle_text(
         message,
@@ -1784,16 +2061,14 @@ async def on_text_frag(message: Message, db: Database, settings: Settings, check
     ):
         return
 
-    if text == BTN_ADMIN_F:
-        if uid not in settings.admin_ids:
-            await message.answer(
-                "<b>Нет доступа.</b> Клавиша только для администратора.",
-                reply_markup=kb_fragment_main(uid=uid, settings=settings),
-                parse_mode="HTML",
-            )
-            return
-        await cmd_admin(message, db=db, settings=settings)
+    if menu_btn is not None:
+        _clear_input_modes(uid)
+        await _dispatch_fragment_menu(
+            message, menu_btn, uid=uid, db=db, settings=settings, checker=checker
+        )
         return
+
+    text = unicodedata.normalize("NFKC", raw_text.strip())
 
     if PENDING_LUCK_PROMO.pop(uid, None):
         if not luck_promo_entry_available(settings, db):
@@ -1873,20 +2148,7 @@ async def on_text_frag(message: Message, db: Database, settings: Settings, check
         await cmd_start_frag(message, db, settings)
         return
 
-    _reserved_frag = frozenset(
-        {
-            BTN_SEARCH_F,
-            BTN_VALUATE_F,
-            BTN_CABINET_F,
-            BTN_SUPPORT_F,
-            BTN_PLUS_F,
-            BTN_LUCK_F,
-            BTN_DOCS_F,
-            BTN_REFERRAL_F,
-            BTN_ADMIN_F,
-        }
-    )
-    if _sess[uid].get("await_valuation") and text not in _reserved_frag:
+    if _sess[uid].get("await_valuation"):
         _sess[uid]["await_valuation"] = False
         await perform_appraisals_batch(
             message,
@@ -1895,102 +2157,6 @@ async def on_text_frag(message: Message, db: Database, settings: Settings, check
             db=db,
             settings=settings,
             checker=checker,
-        )
-        return
-
-    if text == BTN_SEARCH_F:
-        if db.is_search_globally_blocked() and uid not in settings.admin_ids:
-            await message.answer(
-                "<b>Стол на паузе.</b>\n\n"
-                "Поиск никнеймов временно закрыт администратором для всех гостей. "
-                "Оценка ников и остальное меню работают.",
-                reply_markup=kb_fragment_main(uid=uid, settings=settings),
-                parse_mode="HTML",
-            )
-            return
-        if not db.can_search(uid, settings.free_search_limit):
-            await message.answer(
-                "<b>Нет попыток.</b>\n"
-                "Бесплатные крутки закончились. Оформи <b>Подписка PLUS</b>.",
-                reply_markup=kb_fragment_main(uid=uid, settings=settings),
-                parse_mode="HTML",
-            )
-            return
-        await message.answer(
-            _ui_frag_pick_length(),
-            reply_markup=kb_fragment_lengths(uid=uid, db=db),
-            parse_mode="HTML",
-        )
-        return
-
-    if text == BTN_VALUATE_F:
-        _sess[uid]["await_valuation"] = True
-        await message.answer(
-            "<b>Оценка @ника</b>\n\n"
-            "Пришли одним сообщением один или несколько ников, например:\n"
-            "<code>crypto, @wolf, ninja</code>\n\n"
-            "<i>Оценка не расходует бесплатные подборы.</i>",
-            reply_markup=kb_fragment_main(uid=uid, settings=settings),
-            parse_mode="HTML",
-        )
-        return
-
-    if text == BTN_CABINET_F:
-        await message.answer(
-            await cabinet_text_frag(db, uid, settings),
-            reply_markup=InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [
-                        InlineKeyboardButton(
-                            text="📂 Сохранённые ники", callback_data="cab:saved"
-                        )
-                    ],
-                    [
-                        InlineKeyboardButton(
-                            text="◀ В меню", callback_data="cab:back_frag"
-                        )
-                    ],
-                ]
-            ),
-            parse_mode="HTML",
-        )
-        return
-
-    if text == BTN_REFERRAL_F:
-        await answer_referral_program(message, db, settings)
-        return
-
-    if text == BTN_SUPPORT_F:
-        await message.answer(
-            f"<b>Поддержка</b> · {html.escape(AMNYAM)}\n\n"
-            "Если заметили проблему или у вас появился вопрос — напишите в нашу поддержку @amnyam_supportt.",
-            reply_markup=kb_fragment_main(uid=uid, settings=settings),
-            parse_mode="HTML",
-        )
-        return
-
-    if text == BTN_DOCS_F:
-        await message.answer(
-            legal_documents_user_html(db),
-            reply_markup=kb_fragment_main(uid=uid, settings=settings),
-            parse_mode="HTML",
-            disable_web_page_preview=True,
-        )
-        return
-
-    if text == BTN_PLUS_F:
-        await message.answer(
-            _plus_shop_html(db, uid),
-            reply_markup=kb_plus_tariffs(),
-            parse_mode="HTML",
-        )
-        return
-
-    if text == BTN_LUCK_F:
-        await message.answer(
-            _luck_menu_html(uid, db, BTN_SEARCH_F),
-            reply_markup=_luck_menu_inline_kb(uid, db, settings),
-            parse_mode="HTML",
         )
         return
 
@@ -2777,7 +2943,8 @@ async def on_text_v2(
 ) -> None:
     assert message.text and message.from_user
     uid = message.from_user.id
-    text = _normalize_menu_text(message.text, fragment=False)
+    raw_text = message.text
+    menu_btn = _match_menu_button(raw_text, fragment=False)
     ud = _sess[uid]
 
     if await admin_try_handle_text(
@@ -2789,33 +2956,14 @@ async def on_text_v2(
     ):
         return
 
-    if text == BTN_ADMIN:
-        if uid not in settings.admin_ids:
-            await message.answer(
-                "<b>Нет доступа.</b> Клавиша только для администратора.",
-                reply_markup=kb_v2_main(uid=uid, settings=settings),
-                parse_mode="HTML",
-            )
-            return
-        await cmd_admin(message, db=db, settings=settings)
+    if menu_btn is not None:
+        _clear_input_modes(uid)
+        await _dispatch_v2_menu(
+            message, menu_btn, uid=uid, db=db, settings=settings, checker=checker
+        )
         return
 
-    _reserved_v2 = frozenset(
-        {
-            BTN_ROLL,
-            BTN_VALUATE,
-            BTN_TOP,
-            BTN_CABINET,
-            BTN_SUPPORT,
-            BTN_PLUS,
-            BTN_LUCK,
-            BTN_DOCS,
-            BTN_REFERRAL,
-            BTN_ADMIN,
-        }
-    )
-    if ud.get("await_username") and text in _reserved_v2:
-        ud.pop("await_username", None)
+    text = unicodedata.normalize("NFKC", raw_text.strip())
 
     if ud.get("await_username"):
         ud["await_username"] = False
@@ -2905,96 +3053,6 @@ async def on_text_v2(
     if first in _TEXT_START:
         ud.pop("await_username", None)
         await cmd_start_v2(message, db, settings)
-        return
-
-    if text == BTN_ROLL:
-        if db.is_search_globally_blocked() and uid not in settings.admin_ids:
-            await message.answer(
-                "<b>Подбор на паузе.</b>\n\n"
-                "Поиск никнеймов временно закрыт администратором. Оценка и остальное доступны.",
-                reply_markup=kb_v2_main(uid=uid, settings=settings),
-                parse_mode="HTML",
-            )
-            return
-        ud.pop("roll_len", None)
-        ud.pop("roll_tier", None)
-        await message.answer(
-            _roll_pick_intro_html(),
-            reply_markup=kb_v2_lengths(),
-            parse_mode="HTML",
-        )
-        return
-
-    if text == BTN_VALUATE:
-        ud["await_username"] = True
-        await message.answer(
-            "<b>Оценка никнейма</b>\n\n"
-            "Отправьте один или несколько ников в сообщении, например:\n"
-            "<code>crypto, @wolf, ninja</code>\n\n"
-            "<i>Не расходует бесплатные подборы. Для одного ника — карточка с кнопками внизу.</i>",
-            parse_mode="HTML",
-        )
-        return
-
-    if text == BTN_TOP:
-        top = db.top_roll_month(days=30, limit=10)
-        if not top:
-            await message.answer(
-                f"<b>Рейтинг пуст.</b> Сделайте несколько подборов через «{html.escape(BTN_ROLL)}».",
-                parse_mode="HTML",
-            )
-            return
-        lines = [
-            "<b>Топ за 30 дней</b>",
-            "",
-        ]
-        for i, (uname, rarity, pred) in enumerate(top, start=1):
-            usd_txt = "?" if pred is None else f"${pred:,.0f}"
-            lines.append(
-                f"{i}. @{html.escape(uname)} — <b>{html.escape(rarity)}</b> ({usd_txt})"
-            )
-        await message.answer("\n".join(lines), parse_mode="HTML")
-        return
-
-    if text == BTN_CABINET:
-        await message.answer(
-            await cabinet_text_v2(db, uid, settings),
-            reply_markup=kb_v2_cabinet(),
-            parse_mode="HTML",
-        )
-        return
-
-    if text == BTN_REFERRAL:
-        await answer_referral_program(message, db, settings)
-        return
-
-    if text == BTN_SUPPORT:
-        await cmd_support_v2(message, settings)
-        return
-
-    if text == BTN_DOCS:
-        await message.answer(
-            legal_documents_user_html(db),
-            reply_markup=kb_v2_main(uid=uid, settings=settings),
-            parse_mode="HTML",
-            disable_web_page_preview=True,
-        )
-        return
-
-    if text == BTN_PLUS:
-        await message.answer(
-            _plus_shop_html(db, uid),
-            reply_markup=kb_plus_tariffs(),
-            parse_mode="HTML",
-        )
-        return
-
-    if text == BTN_LUCK:
-        await message.answer(
-            _luck_menu_html(uid, db, BTN_ROLL),
-            reply_markup=_luck_menu_inline_kb(uid, db, settings),
-            parse_mode="HTML",
-        )
         return
 
     await message.answer(
@@ -3381,8 +3439,23 @@ async def cmd_cancel(message: Message, settings: Settings) -> None:
 async def router_entry(
     message: Message, db: Database, settings: Settings, checker: Any
 ) -> None:
-    if message.text:
+    if not message.text:
+        return
+    try:
         await on_text_router(message, db, settings, checker)
+    except Exception:
+        log.exception("router_entry uid=%s text=%r", message.from_user.id if message.from_user else None, message.text)
+        uid = message.from_user.id if message.from_user else 0
+        kb = (
+            kb_fragment_main(uid=uid, settings=settings)
+            if settings.bot_mode == "fragment"
+            else kb_v2_main(uid=uid, settings=settings)
+        )
+        await message.answer(
+            "<b>Сбой обработки.</b> Нажмите <code>/start</code> — меню обновится.",
+            reply_markup=kb,
+            parse_mode="HTML",
+        )
 
 
 async def start_entry(
@@ -3500,8 +3573,7 @@ async def aiogram_main() -> None:
     dp.update.middleware(
         DependenciesMiddleware(db=db, settings=settings, checker=checker, bot=bot)
     )
-    dp.message.middleware(AiogramChannelGateMiddleware())
-    dp.callback_query.middleware(AiogramChannelGateMiddleware())
+    dp.update.middleware(AiogramChannelGateMiddleware())
 
     @dp.message(CommandStart())
     async def _start(
