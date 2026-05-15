@@ -52,7 +52,7 @@ from checker import (
 )
 from channel_gate_aiogram import AiogramChannelGateMiddleware
 from config import Settings, load_settings
-from db import Database, SAVED_USERNAMES_LIMIT
+from db import DISPLAY_NAME_MAX_LEN, Database, SAVED_USERNAMES_LIMIT
 from referral_start import referrer_id_from_command
 from admin_panel import (
     admin_clear_session,
@@ -427,6 +427,81 @@ def _clear_input_modes(uid: int) -> None:
     PENDING_LUCK_PROMO.pop(uid, None)
     _sess[uid].pop("await_valuation", None)
     _sess[uid].pop("await_username", None)
+    _sess[uid].pop("await_display_name", None)
+
+
+def _display_name_cabinet_line(db: Database, uid: int) -> str:
+    name = db.get_display_name(uid)
+    if name:
+        return f"✏️ <b>Имя:</b> {html.escape(name)}"
+    return "✏️ <b>Имя:</b> <i>не задано — нажмите «Сменить имя»</i>"
+
+
+async def _prompt_display_name(
+    message: Message, *, uid: int, settings: Settings, fragment: bool
+) -> None:
+    _sess[uid]["await_display_name"] = True
+    kb = (
+        kb_fragment_main(uid=uid, settings=settings)
+        if fragment
+        else kb_v2_main(uid=uid, settings=settings)
+    )
+    await message.answer(
+        "<b>Смена имени</b>\n\n"
+        "Пришлите одним сообщением, как вас показывать в кабинете "
+        f"(до <code>{DISPLAY_NAME_MAX_LEN}</code> символов).\n\n"
+        "<i>Отправьте <code>-</code> чтобы сбросить имя.</i>",
+        parse_mode="HTML",
+        reply_markup=kb,
+    )
+
+
+async def _apply_display_name_from_text(
+    message: Message,
+    *,
+    uid: int,
+    db: Database,
+    settings: Settings,
+    text: str,
+    fragment: bool,
+) -> bool:
+    """Обработать ввод имени. True = обработано."""
+    if not _sess[uid].pop("await_display_name", None):
+        return False
+    raw = text.strip()
+    if raw in ("-", "—", "сброс", "reset"):
+        raw = ""
+    ok, reason = db.set_display_name(uid, raw or None)
+    kb = (
+        kb_fragment_main(uid=uid, settings=settings)
+        if fragment
+        else kb_v2_main(uid=uid, settings=settings)
+    )
+    if not ok:
+        err = {
+            "too_long": "Слишком длинное имя (макс. 32 символа).",
+            "invalid_chars": "Недопустимые символы в имени.",
+        }.get(reason, "Не удалось сохранить.")
+        await message.answer(f"<b>{html.escape(err)}</b>", parse_mode="HTML", reply_markup=kb)
+        return True
+    if raw:
+        await message.answer(
+            f"<b>Имя сохранено:</b> {html.escape(db.get_display_name(uid) or raw)}",
+            parse_mode="HTML",
+            reply_markup=kb,
+        )
+    else:
+        await message.answer(
+            "<b>Имя сброшено.</b>",
+            parse_mode="HTML",
+            reply_markup=kb,
+        )
+    await message.answer(
+        await cabinet_text_frag(db, uid, settings),
+        parse_mode="HTML",
+        reply_markup=kb,
+    )
+    return True
 
 
 def _match_menu_button(raw: str, *, fragment: bool) -> str | None:
@@ -701,6 +776,11 @@ def kb_v2_cabinet() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [
                 InlineKeyboardButton(
+                    text="✏️ Сменить имя", callback_data="cab:name"
+                )
+            ],
+            [
+                InlineKeyboardButton(
                     text="🍀 Тарифы «Удача»",
                     callback_data="luck:shop",
                 )
@@ -713,6 +793,28 @@ def kb_v2_cabinet() -> InlineKeyboardMarkup:
             [
                 InlineKeyboardButton(
                     text="◀ В меню", callback_data="cab:back"
+                )
+            ],
+        ]
+    )
+
+
+def kb_cabinet_fragment_extra() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="✏️ Сменить имя", callback_data="cab:name"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="📂 Сохранённые ники", callback_data="cab:saved"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="◀ В меню", callback_data="cab:back_frag"
                 )
             ],
         ]
@@ -1639,9 +1741,10 @@ async def cabinet_text_frag(db: Database, uid: int, settings: Settings) -> str:
             f"<b>Бесплатных подборов:</b> <code>{rem}</code> из "
             f"<code>{settings.free_search_limit}</code>"
         )
+    name_ln = _display_name_cabinet_line(db, uid)
     return (
         f"<b>Личный кабинет</b> · {html.escape(AMNYAM)}\n\n"
-        f"{tier}\n{luck_ln}\n{ref_line}\n{tries}\n\n"
+        f"{name_ln}\n{tier}\n{luck_ln}\n{ref_line}\n{tries}\n\n"
         "<i>Список сохранённых @username — в кнопке ниже (нужна подписка PLUS).</i>"
     )
 
@@ -1887,21 +1990,8 @@ async def _dispatch_fragment_menu(
             parse_mode="HTML",
         )
         await message.answer(
-            "<i>Сохранённые ники и фильтры — кнопки ниже.</i>",
-            reply_markup=InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [
-                        InlineKeyboardButton(
-                            text="📂 Сохранённые ники", callback_data="cab:saved"
-                        )
-                    ],
-                    [
-                        InlineKeyboardButton(
-                            text="◀ В меню", callback_data="cab:back_frag"
-                        )
-                    ],
-                ]
-            ),
+            "<i>Сохранённые ники и смена имени — кнопки ниже.</i>",
+            reply_markup=kb_cabinet_fragment_extra(),
             parse_mode="HTML",
         )
         return
@@ -2071,6 +2161,12 @@ async def on_text_frag(message: Message, db: Database, settings: Settings, check
         return
 
     text = unicodedata.normalize("NFKC", raw_text.strip())
+
+    if _sess[uid].get("await_display_name"):
+        await _apply_display_name_from_text(
+            message, uid=uid, db=db, settings=settings, text=text, fragment=True
+        )
+        return
 
     if PENDING_LUCK_PROMO.pop(uid, None):
         if not luck_promo_entry_available(settings, db):
@@ -2327,6 +2423,13 @@ async def on_callback_frag(
         await cb.message.edit_text(
             "<b>Готово.</b> Продолжайте с клавиатуры внизу экрана.",
             parse_mode="HTML",
+        )
+        return
+
+    if data == "cab:name":
+        await cb.answer()
+        await _prompt_display_name(
+            cb.message, uid=uid, settings=settings, fragment=True
         )
         return
 
@@ -2967,6 +3070,12 @@ async def on_text_v2(
 
     text = unicodedata.normalize("NFKC", raw_text.strip())
 
+    if ud.get("await_display_name"):
+        await _apply_display_name_from_text(
+            message, uid=uid, db=db, settings=settings, text=text, fragment=False
+        )
+        return
+
     if ud.get("await_username"):
         ud["await_username"] = False
         await perform_analysis_v2(
@@ -3134,6 +3243,13 @@ async def on_callback_v2(cb: CallbackQuery, db: Database, settings: Settings, ch
                 reply_markup=kb_saved_list_manage(names),
             )
         await cb.message.answer("🗑 Ник удалён из сохранённых.", parse_mode="HTML")
+        return
+
+    if data == "cab:name":
+        await cb.answer()
+        await _prompt_display_name(
+            cb.message, uid=uid, settings=settings, fragment=False
+        )
         return
 
     if data == "cab:saved":

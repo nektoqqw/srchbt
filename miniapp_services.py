@@ -153,7 +153,20 @@ def cabinet_payload(db: Database, uid: int, settings: Settings) -> dict[str, Any
         "referral_bonus_hours": settings.referral_plus_hours,
         "search_blocked": db.is_search_globally_blocked(),
         "bot_mode": settings.bot_mode,
+        "display_name": u.display_name,
     }
+
+
+def set_display_name(db: Database, uid: int, raw: str) -> dict[str, Any]:
+    ok, reason = db.set_display_name(uid, raw)
+    if ok:
+        name = db.get_display_name(uid)
+        return {"ok": True, "display_name": name}
+    err = {
+        "too_long": "Слишком длинное имя (макс. 32 символа)",
+        "invalid_chars": "Недопустимые символы",
+    }
+    return {"ok": False, "error": reason, "message": err.get(reason, reason)}
 
 
 def filters_payload(uid: int) -> dict[str, Any]:

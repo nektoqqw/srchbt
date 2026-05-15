@@ -17,6 +17,7 @@ _DB_LOCK = Lock()
 
 # Максимум сохранённых @ников на одного пользователя (PLUS).
 SAVED_USERNAMES_LIMIT = 20
+DISPLAY_NAME_MAX_LEN = 32
 
 
 @dataclass
@@ -33,6 +34,7 @@ class UserRow:
     luck_forever: int = 0
     # 1 = PLUS сам отключил учёт «Удачи» в крутке (подписка удачи может оставаться активной)
     luck_roll_paused: int = 0
+    display_name: str | None = None
 
 
 @dataclass(frozen=True)
@@ -98,6 +100,8 @@ def _migrate_users_schema(conn: sqlite3.Connection) -> None:
         )
     if "trial_window_started_at" not in cols:
         conn.execute("ALTER TABLE users ADD COLUMN trial_window_started_at TEXT")
+    if "display_name" not in cols:
+        conn.execute("ALTER TABLE users ADD COLUMN display_name TEXT")
 
 
 def _plus_expires_expired(raw: str | None) -> bool:
@@ -320,7 +324,38 @@ class Database:
                 luck_expires_at=row["luck_expires_at"],
                 luck_forever=int(row["luck_forever"]),
                 luck_roll_paused=int(row["luck_roll_paused"]),
+                display_name=(
+                    str(row["display_name"]).strip()
+                    if row["display_name"]
+                    else None
+                ),
             )
+
+    def get_display_name(self, user_id: int) -> str | None:
+        u = self.get_or_create_user(user_id)
+        return u.display_name
+
+    def set_display_name(self, user_id: int, raw: str | None) -> tuple[bool, str]:
+        """Установить отображаемое имя (пустая строка = сброс)."""
+        self.get_or_create_user(user_id)
+        if raw is None or not str(raw).strip():
+            with self._cursor() as cur:
+                cur.execute(
+                    "UPDATE users SET display_name = NULL WHERE user_id = ?",
+                    (user_id,),
+                )
+            return True, "cleared"
+        name = " ".join(str(raw).strip().split())
+        if len(name) > DISPLAY_NAME_MAX_LEN:
+            return False, "too_long"
+        if re.search(r"[\x00-\x1f<>]", name):
+            return False, "invalid_chars"
+        with self._cursor() as cur:
+            cur.execute(
+                "UPDATE users SET display_name = ? WHERE user_id = ?",
+                (name, user_id),
+            )
+        return True, "ok"
 
     def user_exists(self, user_id: int) -> bool:
         with self._cursor() as cur:

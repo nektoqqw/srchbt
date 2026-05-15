@@ -79,7 +79,11 @@
     });
     const t = TAB_TITLES[name] || TAB_TITLES.home;
     document.getElementById("pageTitle").textContent = t[0];
-    document.getElementById("pageSubtitle").textContent = t[1];
+    if (name === "home" && state.me) {
+      renderProfile(state.me);
+    } else {
+      document.getElementById("pageSubtitle").textContent = t[1];
+    }
     haptic("light");
   }
 
@@ -130,6 +134,77 @@
     stage.classList.remove("is-spinning");
     clearInterval(state.slotTimer);
     document.getElementById("btnRoll").disabled = false;
+  }
+
+  const SLOT_H = 48;
+
+  function revealSlotLetter(cell, targetChar, delayMs) {
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        const strip = document.createElement("div");
+        strip.className = "slot-strip";
+        const total = 14;
+        const targetIdx = total - 2;
+        for (let j = 0; j < total; j++) {
+          const span = document.createElement("span");
+          span.className = "slot-char";
+          span.textContent =
+            j === targetIdx
+              ? targetChar
+              : LETTERS[Math.floor(Math.random() * LETTERS.length)];
+          strip.appendChild(span);
+        }
+        cell.innerHTML = "";
+        cell.appendChild(strip);
+        strip.style.transition = "none";
+        strip.style.transform = "translateY(0)";
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            strip.style.transition = "transform 0.62s cubic-bezier(0.15, 0.85, 0.25, 1)";
+            strip.style.transform = `translateY(-${targetIdx * SLOT_H}px)`;
+          });
+        });
+        const done = () => {
+          cell.classList.add("slot-locked");
+          const final = strip.querySelectorAll(".slot-char")[targetIdx];
+          if (final) final.classList.add("slot-final");
+          haptic("light");
+          resolve();
+        };
+        strip.addEventListener("transitionend", done, { once: true });
+        setTimeout(done, 750);
+      }, delayMs);
+    });
+  }
+
+  async function revealUsernameInSlots(username) {
+    clearInterval(state.slotTimer);
+    const stage = document.getElementById("rollStage");
+    stage.classList.remove("is-spinning");
+    stage.classList.remove("hidden");
+    const chars = String(username || "")
+      .toLowerCase()
+      .replace(/^@/, "")
+      .split("");
+    buildSlots(chars.length);
+    document.getElementById("rollStatus").textContent = "Нашли! Выкатываем буквы…";
+    const cells = document.querySelectorAll(".slot-cell");
+    for (let i = 0; i < chars.length; i++) {
+      await revealSlotLetter(cells[i], chars[i], i * 200);
+    }
+    document.getElementById("rollStatus").textContent = `@${chars.join("")}`;
+    haptic("success");
+  }
+
+  function renderProfile(me) {
+    const name = (me.display_name || "").trim();
+    const el = document.getElementById("profileName");
+    if (el) el.textContent = name || "Не задано";
+    const input = document.getElementById("nameInput");
+    if (input && document.activeElement !== input) input.value = name;
+    if (name && TAB_TITLES.home) {
+      document.getElementById("pageSubtitle").textContent = `Привет, ${name}`;
+    }
   }
 
   function renderStats(me) {
@@ -294,6 +369,7 @@
     document.getElementById("main").classList.remove("hidden");
     document.getElementById("tabBar").classList.remove("hidden");
     renderStats(me);
+    renderProfile(me);
     const tariffs = await api("/api/tariffs");
     renderTariffs(tariffs);
     const ref = await api("/api/referral");
@@ -361,9 +437,16 @@
       status.textContent = "Ищем свободный ник…";
       attempts.textContent = `Проверено: ${st.progress || 0}`;
       if (st.status === "done") {
-        stopRollAnimation();
-        document.getElementById("rollStage").classList.add("hidden");
-        showRollResult(st.result || {});
+        const r = st.result || {};
+        document.getElementById("btnRoll").disabled = false;
+        if (r.found && r.username) {
+          await revealUsernameInSlots(r.username);
+          await new Promise((res) => setTimeout(res, 400));
+        } else {
+          stopRollAnimation();
+          document.getElementById("rollStage").classList.add("hidden");
+        }
+        showRollResult(r);
         loadMe();
         return;
       }
@@ -500,6 +583,39 @@
   });
 
   document.getElementById("gateRecheck").addEventListener("click", () => loadMe());
+
+  document.getElementById("btnEditName").addEventListener("click", () => {
+    const panel = document.getElementById("nameEditPanel");
+    panel.classList.toggle("hidden");
+    if (!panel.classList.contains("hidden")) {
+      document.getElementById("nameInput").focus();
+    }
+    haptic("light");
+  });
+
+  async function saveDisplayName(name) {
+    const r = await api("/api/profile/name", {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    });
+    if (r.ok) {
+      toast(name ? "Имя сохранено" : "Имя сброшено");
+      haptic("success");
+      document.getElementById("nameEditPanel").classList.add("hidden");
+      loadMe();
+    } else {
+      toast(r.message || r.error || "Не удалось");
+      haptic("error");
+    }
+  }
+
+  document.getElementById("btnSaveName").addEventListener("click", () => {
+    saveDisplayName(document.getElementById("nameInput").value.trim());
+  });
+
+  document.getElementById("btnClearName").addEventListener("click", () => {
+    saveDisplayName("");
+  });
 
   document.getElementById("admAction").addEventListener("change", (e) => {
     updateAdminTariffSelect(e.target.value, state.admin || {});

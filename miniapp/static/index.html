@@ -13,8 +13,13 @@
   <div class="bg-mesh" aria-hidden="true"></div>
   <div id="app" class="app">
     <header class="nav-header">
-      <h1 class="large-title" id="pageTitle">Амням</h1>
-      <p class="subtitle" id="pageSubtitle">подбор · оценка · PLUS</p>
+      <div class="brand-row">
+        <img src="/app/static/img/logo.png" alt="" class="brand-logo" width="40" height="40" />
+        <div class="brand-text">
+          <h1 class="large-title" id="pageTitle">Амням</h1>
+          <p class="subtitle" id="pageSubtitle">подбор · оценка · PLUS</p>
+        </div>
+      </div>
     </header>
 
     <section id="gate" class="sheet gate hidden">
@@ -26,6 +31,23 @@
 
     <main id="main" class="main hidden">
       <div id="tab-home" class="tab-pane active">
+        <div class="sheet profile-sheet">
+          <div class="profile-row">
+            <img src="/app/static/img/logo.png" alt="" class="profile-avatar" width="48" height="48" />
+            <div class="profile-meta">
+              <p class="caption profile-label">Ваше имя</p>
+              <p class="profile-name" id="profileName">—</p>
+            </div>
+            <button type="button" class="btn btn-tinted btn-sm" id="btnEditName">Изменить</button>
+          </div>
+          <div id="nameEditPanel" class="name-edit hidden">
+            <input class="field-input" id="nameInput" maxlength="32" placeholder="Как вас называть?" autocomplete="name" />
+            <div class="name-edit-actions">
+              <button type="button" class="btn btn-filled btn-sm" id="btnSaveName">Сохранить</button>
+              <button type="button" class="btn btn-plain btn-sm" id="btnClearName">Сбросить</button>
+            </div>
+          </div>
+        </div>
         <div class="sheet hero-sheet">
           <div class="stat-grid" id="stats"></div>
           <button type="button" class="btn btn-plain btn-sm" id="btnSyncPay">↻ Проверить оплаты</button>

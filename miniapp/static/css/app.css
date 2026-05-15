@@ -67,6 +67,60 @@ body {
   margin-bottom: 12px;
 }
 
+.brand-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.brand-logo,
+.profile-avatar {
+  border-radius: 12px;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: #fff;
+}
+
+.brand-text {
+  min-width: 0;
+}
+
+.profile-sheet {
+  padding-top: 14px;
+}
+
+.profile-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.profile-meta {
+  flex: 1;
+  min-width: 0;
+}
+
+.profile-label {
+  margin: 0 0 2px;
+}
+
+.profile-name {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  word-break: break-word;
+}
+
+.name-edit {
+  margin-top: 12px;
+}
+
+.name-edit-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
 .large-title {
   margin: 0;
   font-size: 34px;
@@ -402,6 +456,28 @@ body {
   font-variant-numeric: tabular-nums;
   color: var(--tint);
   text-shadow: 0 0 12px rgba(191, 90, 242, 0.6);
+}
+
+.slot-cell.slot-locked {
+  border-color: rgba(48, 209, 88, 0.55);
+  box-shadow: 0 0 16px rgba(48, 209, 88, 0.25);
+}
+
+.slot-char.slot-final {
+  color: var(--green);
+  text-shadow: 0 0 14px rgba(48, 209, 88, 0.75);
+  animation: letterPop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes letterPop {
+  from {
+    transform: scale(0.6);
+    opacity: 0.3;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 
 .roll-status {

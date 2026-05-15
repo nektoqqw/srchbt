@@ -36,6 +36,7 @@ from miniapp_services import (
     save_username,
     set_filters,
     start_roll_job,
+    set_display_name,
     sync_payments,
     tariffs_payload,
     toggle_luck_pause,
@@ -378,6 +379,20 @@ async def api_admin_promo_create(request: web.Request) -> web.Response:
     )
 
 
+async def api_profile_name(request: web.Request) -> web.Response:
+    uid, err = await _require_user(request)
+    if err:
+        return err
+    try:
+        body = await request.json()
+    except Exception:
+        return _json({"ok": False, "error": "invalid_json"}, 400)
+    if not isinstance(body, dict):
+        return _json({"ok": False, "error": "invalid_body"}, 400)
+    db: Database = request.app["db"]
+    return _json(set_display_name(db, uid, str(body.get("name") or "")))
+
+
 async def api_sync_payments(request: web.Request) -> web.Response:
     uid, err = await _require_user(request)
     if err:
@@ -415,6 +430,7 @@ def setup_miniapp_routes(app: web.Application) -> None:
     app.router.add_post("/api/luck/toggle", api_luck_toggle)
     app.router.add_get("/api/referral", api_referral)
     app.router.add_get("/api/documents", api_documents)
+    app.router.add_post("/api/profile/name", api_profile_name)
     app.router.add_post("/api/payments/sync", api_sync_payments)
     app.router.add_get("/api/admin/dashboard", api_admin_dashboard)
     app.router.add_post("/api/admin/toggle-search", api_admin_toggle_search)
