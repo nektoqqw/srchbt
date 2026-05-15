@@ -5,6 +5,7 @@ import re
 from dataclasses import dataclass
 
 from db import Database
+from english_dictionary import is_english_dictionary_word
 from username_rarity import combined_rarity
 
 _VOWELS = set("aeiou")
@@ -126,11 +127,12 @@ def _pronounceability_score(username: str) -> int:
 
 
 def _is_dictionary_like(username: str) -> bool:
-    u = username.lower()
+    u = username.lower().lstrip("@")
     if u in _WORDLIKE:
         return True
+    if 5 <= len(u) <= 7 and re.fullmatch(r"[a-z]+", u):
+        return is_english_dictionary_word(u)
     if len(u) <= 8 and re.fullmatch(r"[a-z]+", u):
-        # Простая эвристика "похоже на слово"
         return _pronounceability_score(u) >= 70
     return False
 

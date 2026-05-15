@@ -154,6 +154,7 @@ def cabinet_payload(db: Database, uid: int, settings: Settings) -> dict[str, Any
         "search_blocked": db.is_search_globally_blocked(),
         "bot_mode": settings.bot_mode,
         "display_name": u.display_name,
+        "ton_to_usd": settings.ton_to_usd,
     }
 
 

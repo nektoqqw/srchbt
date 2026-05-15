@@ -62,6 +62,13 @@
     return data;
   }
 
+  function escapeHtml(s) {
+    return String(s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  }
+
   function toast(msg) {
     const el = document.getElementById("toast");
     el.textContent = msg;
@@ -403,10 +410,12 @@
     if (r.found) {
       resultEl.className = "result-card found";
       haptic("success");
+      const why = r.why ? `<p class="caption roll-why">${escapeHtml(r.why)}</p>` : "";
       resultEl.innerHTML = `
         <p class="username">@${r.username}</p>
         <p>Редкость: <b>${r.rarity}</b></p>
         <p>Ориентир: <b>$${(r.price_usd || 0).toLocaleString()}</b></p>
+        ${why}
         <p class="caption">${r.attempts} попыток</p>
         ${state.me.is_plus ? `<button type="button" class="btn btn-plain btn-block" id="btnSaveRoll">Сохранить @ник</button>` : ""}
       `;

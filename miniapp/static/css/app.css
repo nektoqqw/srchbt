@@ -76,9 +76,9 @@ body {
 .brand-logo,
 .profile-avatar {
   border-radius: 12px;
-  object-fit: cover;
+  object-fit: contain;
   flex-shrink: 0;
-  background: #fff;
+  background: transparent;
 }
 
 .brand-text {
