@@ -19,6 +19,7 @@ _DB_LOCK = Lock()
 SAVED_USERNAMES_LIMIT = 20
 
 
+@dataclass
 class UserRow:
     user_id: int
     searches_used: int
