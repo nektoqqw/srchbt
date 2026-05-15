@@ -1,75 +1,71 @@
-"""Убрать белый фон у logo.png (flood-fill от краёв)."""
+"""Убрать белый фон снаружи персонажа; глаза и тело не трогать."""
 
 from __future__ import annotations
 
-from collections import deque
 from pathlib import Path
 
 from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[1]
+SOURCE_LOCAL = ROOT / "miniapp" / "static" / "img" / "logo_source.png"
 LOGO = ROOT / "miniapp" / "static" / "img" / "logo.png"
-WHITE_THRESH = 238
 
 
-def _is_background(r: int, g: int, b: int) -> bool:
-    return r >= WHITE_THRESH and g >= WHITE_THRESH and b >= WHITE_THRESH
+def _is_green_body(r: int, g: int, b: int) -> bool:
+    """Зелёное тело/контур Om Nom."""
+    return g > r + 12 and g > b + 12 and g >= 70
 
 
-def flood_remove_background(img: Image.Image) -> Image.Image:
-    img = img.convert("RGBA")
-    w, h = img.size
-    px = img.load()
-    seen = set()
-    q: deque[tuple[int, int]] = deque()
+def _is_white(r: int, g: int, b: int) -> bool:
+    return r >= 235 and g >= 235 and b >= 235
 
-    for x in range(w):
-        q.append((x, 0))
-        q.append((x, h - 1))
-    for y in range(h):
-        q.append((0, y))
-        q.append((w - 1, y))
 
-    while q:
-        x, y = q.popleft()
-        if x < 0 or y < 0 or x >= w or y >= h:
-            continue
-        if (x, y) in seen:
-            continue
-        r, g, b, _a = px[x, y]
-        if not _is_background(r, g, b):
-            continue
-        seen.add((x, y))
-        px[x, y] = (r, g, b, 0)
-        q.append((x + 1, y))
-        q.append((x - 1, y))
-        q.append((x, y + 1))
-        q.append((x, y - 1))
+def remove_background_keep_eyes(img: Image.Image) -> Image.Image:
+    """
+    Прозрачным делаем только белый фон ВНЕ bbox зелёного тела.
+    Белые глаза внутри силуэта остаются нетронутыми.
+    """
+    src = img.convert("RGBA")
+    w, h = src.size
+    px = src.load()
 
-    # мягкий край у пикселей рядом с прозрачностью
+    xs: list[int] = []
+    ys: list[int] = []
     for y in range(h):
         for x in range(w):
-            r, g, b, a = px[x, y]
-            if a == 0:
-                continue
-            if r >= WHITE_THRESH - 20 and g >= WHITE_THRESH - 20 and b >= WHITE_THRESH - 20:
-                neighbors_transparent = 0
-                for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-                    nx, ny = x + dx, y + dy
-                    if 0 <= nx < w and 0 <= ny < h and px[nx, ny][3] == 0:
-                        neighbors_transparent += 1
-                if neighbors_transparent >= 2:
-                    br = (r + g + b) / 3
-                    fade = max(0.0, (WHITE_THRESH - br) / 40.0)
-                    px[x, y] = (r, g, b, int(255 * fade))
+            r, g, b, _a = px[x, y]
+            if _is_green_body(r, g, b):
+                xs.append(x)
+                ys.append(y)
 
-    return img
+    if not xs:
+        return src
+
+    pad = 12
+    min_x = max(0, min(xs) - pad)
+    max_x = min(w - 1, max(xs) + pad)
+    min_y = max(0, min(ys) - pad)
+    max_y = min(h - 1, max(ys) + pad)
+
+    out = src.copy()
+    opx = out.load()
+    for y in range(h):
+        for x in range(w):
+            r, g, b, a = opx[x, y]
+            inside = min_x <= x <= max_x and min_y <= y <= max_y
+            if not inside and _is_white(r, g, b):
+                opx[x, y] = (255, 255, 255, 0)
+            elif not inside and r >= 220 and g >= 220 and b >= 220:
+                # антиалиас у края холста
+                opx[x, y] = (r, g, b, 0)
+
+    return out
 
 
 def main() -> None:
-    if not LOGO.is_file():
-        raise SystemExit(f"not found: {LOGO}")
-    out = flood_remove_background(Image.open(LOGO))
+    if not SOURCE_LOCAL.is_file():
+        raise SystemExit(f"source not found: {SOURCE_LOCAL}")
+    out = remove_background_keep_eyes(Image.open(SOURCE_LOCAL))
     bbox = out.getbbox()
     if bbox:
         out = out.crop(bbox)
