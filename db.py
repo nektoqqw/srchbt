@@ -6,6 +6,7 @@ import re
 import sqlite3
 from contextlib import contextmanager
 from dataclasses import dataclass
+from typing import NamedTuple
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from threading import Lock
@@ -20,6 +21,13 @@ SAVED_USERNAMES_LIMIT = 20
 
 
 @dataclass
+class TrialRollsStatus(NamedTuple):
+    used: int
+    limit: int
+    remaining: int
+    resets_at: datetime
+
+
 class UserRow:
     user_id: int
     searches_used: int
@@ -92,6 +100,12 @@ def _migrate_users_schema(conn: sqlite3.Connection) -> None:
         conn.execute(
             "ALTER TABLE users ADD COLUMN luck_roll_paused INTEGER NOT NULL DEFAULT 0"
         )
+    if "trial_rolls_used" not in cols:
+        conn.execute(
+            "ALTER TABLE users ADD COLUMN trial_rolls_used INTEGER NOT NULL DEFAULT 0"
+        )
+    if "trial_window_started_at" not in cols:
+        conn.execute("ALTER TABLE users ADD COLUMN trial_window_started_at TEXT")
 
 
 def _plus_expires_expired(raw: str | None) -> bool:
@@ -430,25 +444,134 @@ class Database:
                 (new_exp.isoformat(), user_id),
             )
 
-    def searches_remaining(self, user_id: int, free_limit: int) -> Optional[int]:
+    def _trial_period_timedelta(self, period_hours: int) -> timedelta:
+        h = max(1, min(168, int(period_hours)))
+        return timedelta(hours=h)
+
+    def _trial_sync_window_locked(
+        self,
+        cur: sqlite3.Cursor,
+        user_id: int,
+        *,
+        period_hours: int,
+    ) -> tuple[int, datetime]:
+        """Сброс окна, если прошло period_hours; возвращает (used, resets_at)."""
+        period = self._trial_period_timedelta(period_hours)
+        now = datetime.now(timezone.utc)
+        cur.execute(
+            """
+            SELECT trial_rolls_used, trial_window_started_at
+            FROM users WHERE user_id = ?
+            """,
+            (user_id,),
+        )
+        row = cur.fetchone()
+        assert row is not None
+        used = int(row["trial_rolls_used"] or 0)
+        raw_start = row["trial_window_started_at"]
+        if not raw_start:
+            started = now
+            cur.execute(
+                """
+                UPDATE users
+                SET trial_window_started_at = ?, trial_rolls_used = 0
+                WHERE user_id = ?
+                """,
+                (started.isoformat(), user_id),
+            )
+            return 0, started + period
+        try:
+            started = datetime.fromisoformat(str(raw_start).replace("Z", "+00:00"))
+        except ValueError:
+            started = now
+        if started.tzinfo is None:
+            started = started.replace(tzinfo=timezone.utc)
+        if now >= started + period:
+            started = now
+            used = 0
+            cur.execute(
+                """
+                UPDATE users
+                SET trial_window_started_at = ?, trial_rolls_used = 0
+                WHERE user_id = ?
+                """,
+                (started.isoformat(), user_id),
+            )
+        return used, started + period
+
+    def get_trial_rolls_status(
+        self,
+        user_id: int,
+        free_limit: int,
+        *,
+        period_hours: int = 24,
+    ) -> TrialRollsStatus | None:
         """None = безлимит (PLUS)."""
         u = self.get_or_create_user(user_id)
         if u.is_plus:
             return None
-        return max(0, free_limit - u.searches_used)
+        limit = max(1, int(free_limit))
+        with self._cursor() as cur:
+            used, resets_at = self._trial_sync_window_locked(
+                cur, user_id, period_hours=period_hours
+            )
+        remaining = max(0, limit - used)
+        return TrialRollsStatus(
+            used=used,
+            limit=limit,
+            remaining=remaining,
+            resets_at=resets_at,
+        )
 
-    def can_search(self, user_id: int, free_limit: int) -> bool:
+    def searches_remaining(
+        self,
+        user_id: int,
+        free_limit: int,
+        *,
+        period_hours: int = 24,
+    ) -> Optional[int]:
+        """None = безлимит (PLUS)."""
+        st = self.get_trial_rolls_status(
+            user_id, free_limit, period_hours=period_hours
+        )
+        if st is None:
+            return None
+        return st.remaining
+
+    def can_search(
+        self,
+        user_id: int,
+        free_limit: int,
+        *,
+        period_hours: int = 24,
+    ) -> bool:
+        st = self.get_trial_rolls_status(
+            user_id, free_limit, period_hours=period_hours
+        )
+        if st is None:
+            return True
+        return st.remaining > 0
+
+    def increment_search(
+        self,
+        user_id: int,
+        *,
+        period_hours: int = 24,
+    ) -> None:
         u = self.get_or_create_user(user_id)
         if u.is_plus:
-            return True
-        return u.searches_used < free_limit
-
-    def increment_search(self, user_id: int) -> None:
-        self.get_or_create_user(user_id)
+            return
         with self._cursor() as cur:
+            used, _ = self._trial_sync_window_locked(
+                cur, user_id, period_hours=period_hours
+            )
             cur.execute(
-                "UPDATE users SET searches_used = searches_used + 1 WHERE user_id = ?",
-                (user_id,),
+                """
+                UPDATE users
+                SET trial_rolls_used = ?, searches_used = searches_used + 1
+                WHERE user_id = ?
+                """,
+                (used + 1, user_id),
             )
 
     def is_search_globally_blocked(self) -> bool:

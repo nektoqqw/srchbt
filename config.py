@@ -47,7 +47,9 @@ class Settings:
     luck_promo_code: str
     admin_ids: set[int]
     db_path: Path
-    free_search_limit: int = 4
+    # Пробных круток за период для гостей (без PLUS)
+    free_search_limit: int = 6
+    free_trial_period_hours: int = 24
     ton_to_usd: float = 2.0
     telethon_timeout: int = 120
     telethon_connection_retries: int = 10
@@ -194,6 +196,20 @@ def load_settings() -> Settings:
 
     bot_username_for_links = (os.environ.get("BOT_USERNAME_FOR_LINKS") or "").strip().lstrip("@")
 
+    try:
+        free_search_limit = int((os.environ.get("FREE_SEARCH_LIMIT") or "6").strip())
+    except ValueError:
+        free_search_limit = 6
+    free_search_limit = max(1, min(99, free_search_limit))
+
+    try:
+        free_trial_period_hours = int(
+            (os.environ.get("FREE_TRIAL_PERIOD_HOURS") or "24").strip()
+        )
+    except ValueError:
+        free_trial_period_hours = 24
+    free_trial_period_hours = max(1, min(168, free_trial_period_hours))
+
     required_channel_username = parse_required_channel_username(
         os.environ.get("REQUIRED_CHANNEL_USERNAME")
     )
@@ -230,6 +246,8 @@ def load_settings() -> Settings:
         luck_promo_code=luck_promo.upper(),
         admin_ids=admins,
         db_path=db,
+        free_search_limit=free_search_limit,
+        free_trial_period_hours=free_trial_period_hours,
         ton_to_usd=ton_to_usd,
         telethon_timeout=max(10, telethon_timeout),
         telethon_connection_retries=max(1, telethon_connection_retries),
