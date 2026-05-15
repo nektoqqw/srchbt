@@ -157,8 +157,15 @@ async def _on_startup(app: web.Application) -> None:
 
 
 async def _on_cleanup(app: web.Application) -> None:
-    session: ClientSession = app["http_session"]
-    await session.close()
+    session: ClientSession | None = app.get("http_session")
+    if session is not None and not session.closed:
+        await session.close()
+    bot = app.get("bot")
+    if bot is not None:
+        try:
+            await bot.session.close()
+        except Exception:
+            log.debug("bot session close", exc_info=True)
 
 
 async def _health(request: web.Request) -> web.Response:
@@ -222,7 +229,17 @@ def main() -> None:
         port = 8080
 
     log.info("Platega webhook listening http://%s:%s%s", host, port, path)
-    web.run_app(app, host=host, port=port, print=None)
+    try:
+        web.run_app(app, host=host, port=port, print=None)
+    except OSError as e:
+        if "address already in use" in str(e).lower() or getattr(e, "errno", None) == 98:
+            log.error(
+                "Порт %s занят — webhook уже запущен. Не стартуйте второй раз. "
+                "Проверка: ss -tlnp | grep %s",
+                port,
+                port,
+            )
+        raise
 
 
 if __name__ == "__main__":
