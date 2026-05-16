@@ -11,6 +11,11 @@ from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import urlparse
 
+from admin_dict_roll import (
+    admin_dict_roll_payload,
+    admin_dict_roll_set,
+    resolve_roll_dictionary_length,
+)
 from admin_panel import (
     is_admin,
     legal_documents_user_html,
@@ -167,6 +172,7 @@ def cabinet_payload(db: Database, uid: int, settings: Settings) -> dict[str, Any
         "bot_mode": settings.bot_mode,
         "display_name": u.display_name,
         "ton_to_usd": settings.ton_to_usd,
+        "admin_dict_roll": admin_dict_roll_payload(uid) if is_admin(uid, settings) else None,
     }
 
 
@@ -193,6 +199,16 @@ def filters_payload(uid: int) -> dict[str, Any]:
         "summary": filters_summary_ru(flt),
         "active": flt.active(),
     }
+
+
+def admin_dict_roll_update(
+    uid: int,
+    *,
+    enabled: bool | None = None,
+    length: int | None = None,
+) -> dict[str, Any]:
+    cfg = admin_dict_roll_set(uid, enabled=enabled, length=length)
+    return {"ok": True, **admin_dict_roll_payload(uid), "enabled": cfg.enabled, "length": cfg.length}
 
 
 def set_filters(uid: int, *, prefix: str, suffix: str, digits: str) -> dict[str, Any]:
@@ -429,9 +445,14 @@ async def start_roll_job(
         return {"ok": False, "error": "no_attempts"}
 
     is_plus = db.is_plus(uid)
-    flt = _sess(uid).filters.normalized(max_len=length)
-    if flt.active() and not is_plus:
+    roll_length, dict_len = resolve_roll_dictionary_length(
+        uid, is_admin=is_admin(uid, settings), requested_length=length
+    )
+    flt = _sess(uid).filters.normalized(max_len=roll_length)
+    if flt.active() and not is_plus and dict_len is None:
         return {"ok": False, "error": "filters_need_plus"}
+    if dict_len is not None and flt.active():
+        flt = RollFilters()
 
     job_id = uuid.uuid4().hex
     job = RollJob(job_id=job_id, user_id=uid, status="running")
@@ -449,7 +470,7 @@ async def start_roll_job(
                 job.progress = n
 
             found, attempts, timed_out = await find_one_username_fragment_miniapp(
-                length=length,
+                length=roll_length,
                 max_attempts=max_attempts,
                 delay_s=settings.fragment_request_delay_s,
                 lucky=lucky,
@@ -457,6 +478,7 @@ async def start_roll_job(
                 filters=flt,
                 fragment_timeout_s=settings.fragment_roll_timeout_s,
                 is_plus=is_plus,
+                dictionary_length=dict_len,
                 on_progress=on_prog,
             )
             if not timed_out:
@@ -497,7 +519,12 @@ async def start_roll_job(
             job.error = str(e)[:300]
 
     asyncio.create_task(_run())
-    return {"ok": True, "job_id": job_id}
+    return {
+        "ok": True,
+        "job_id": job_id,
+        "roll_length": roll_length,
+        "dictionary_mode": dict_len is not None,
+    }
 
 
 def roll_job_status(job_id: str, uid: int) -> dict[str, Any] | None:

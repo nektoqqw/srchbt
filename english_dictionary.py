@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import random
 import re
 from functools import lru_cache
 from pathlib import Path
@@ -118,3 +119,19 @@ def is_english_dictionary_word(username: str) -> bool:
     if not re.fullmatch(r"[a-z]{5,7}", u):
         return False
     return u in english_words_5_7()
+
+
+@lru_cache(maxsize=3)
+def english_words_at_length(length: int) -> tuple[str, ...]:
+    """Слова словаря ровно заданной длины (5, 6 или 7)."""
+    if length not in (5, 6, 7):
+        return ()
+    return tuple(w for w in english_words_5_7() if len(w) == length)
+
+
+def random_english_dictionary_word(length: int) -> str:
+    """Случайное слово из словаря; гарантированно is_english_dictionary_word."""
+    pool = english_words_at_length(length)
+    if not pool:
+        raise RuntimeError(f"Словарь пуст для длины {length}")
+    return random.choice(pool)

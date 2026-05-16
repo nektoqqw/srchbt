@@ -7,6 +7,7 @@ import re
 import string
 from dataclasses import dataclass
 
+from english_dictionary import random_english_dictionary_word
 from fragment_scraper import random_letters_username_length
 from luck_username import random_free_lucky_username, random_lucky_username
 
@@ -92,11 +93,16 @@ def generate_roll_candidate(
     lucky: bool,
     filters: RollFilters,
     plus_full_cv: bool = True,
+    dictionary_length: int | None = None,
 ) -> str:
     """
     Без фильтров: чередование CVC…; при удаче — палиндромы/края (гость и PLUS — одни «удачные» паттерны).
     С фильтрами — строка a-z / a-z0-9_; при удаче сначала пробуем подходящие «красивые» строки.
+    dictionary_length (5–7) — только реальные слова из english_words_5_7 (режим админа).
     """
+    if dictionary_length in (5, 6, 7):
+        return random_english_dictionary_word(dictionary_length)
+
     fl = filters.normalized(max_len=length)
     if not fl.active():
         return username_roll_random(length, lucky=lucky, plus_full_cv=plus_full_cv)

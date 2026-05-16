@@ -86,6 +86,12 @@ from plus_tariffs import (
     plus_tariff_by_key,
 )
 from tariff_pricing import TARIFF_DISCOUNT_PERCENT, sale_price_rub
+from admin_dict_roll import (
+    admin_dict_roll_get,
+    admin_dict_roll_set,
+    admin_dict_roll_summary_ru,
+    resolve_roll_dictionary_length,
+)
 from roll_filters import (
     RollFilters,
     filters_summary_ru,
@@ -692,14 +698,77 @@ def _kb_frag_filters_panel(uid: int) -> InlineKeyboardMarkup:
     )
 
 
-def kb_fragment_lengths(*, uid: int, db: Database) -> InlineKeyboardMarkup:
-    rows: list[list[InlineKeyboardButton]] = [
+def _html_frag_dict_panel(uid: int) -> str:
+    d = admin_dict_roll_get(uid)
+    st = "включён" if d.enabled else "выключен"
+    return (
+        "<b>Из словаря</b> <i>(только админ)</i>\n\n"
+        f"Статус: <b>{st}</b>\n"
+        f"Длина: <b>{d.length}</b> букв\n\n"
+        "Кандидаты — только реальные английские слова из словаря "
+        f"(<code>english_words_5_7</code>), не случайные буквы.\n\n"
+        "<i>«Крутить» — подбор по выбранной длине. Обычные кнопки 5/6/7 ниже — без словаря.</i>"
+    )
+
+
+def _kb_frag_dict_panel(uid: int) -> InlineKeyboardMarkup:
+    d = admin_dict_roll_get(uid)
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=("📖 Выкл." if d.enabled else "📖 Вкл."),
+                    callback_data="frag:dict:toggle",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text=f"5{' ✓' if d.length == 5 else ''}",
+                    callback_data="frag:dict:len:5",
+                ),
+                InlineKeyboardButton(
+                    text=f"6{' ✓' if d.length == 6 else ''}",
+                    callback_data="frag:dict:len:6",
+                ),
+                InlineKeyboardButton(
+                    text=f"7{' ✓' if d.length == 7 else ''}",
+                    callback_data="frag:dict:len:7",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🎲 Крутить из словаря",
+                    callback_data="frag:dict:roll",
+                ),
+            ],
+            [
+                InlineKeyboardButton(text="◀ К длине", callback_data="frag:dict:back"),
+            ],
+        ]
+    )
+
+
+def kb_fragment_lengths(
+    *, uid: int, db: Database, settings: Settings | None = None
+) -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = []
+    if settings and uid in settings.admin_ids:
+        summ = admin_dict_roll_summary_ru(admin_dict_roll_get(uid))
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text=f"📖 Словарь · {summ}",
+                    callback_data="frag:dict",
+                )
+            ]
+        )
+    rows.append(
         [
             InlineKeyboardButton(text="🔹 5", callback_data="frag:len:5"),
             InlineKeyboardButton(text="🔹 6", callback_data="frag:len:6"),
             InlineKeyboardButton(text="🔹 7", callback_data="frag:len:7"),
         ],
-    ]
+    )
     if db.is_plus(uid):
         fl = _roll_filters_obj(uid)
         label = filters_summary_ru(fl)
@@ -1115,6 +1184,8 @@ async def _frag_run_roll_at_length(
     db: Database,
     settings: Settings,
     checker: Any,
+    *,
+    force_dict_roll: bool = False,
 ) -> None:
     """Один цикл fragment-подбора по выбранной длине (из frag:len или roll:repeat:go)."""
     if db.is_search_globally_blocked() and uid not in settings.admin_ids:
@@ -1133,18 +1204,47 @@ async def _frag_run_roll_at_length(
         return
 
     is_plus = db.is_plus(uid)
+    dict_len: int | None = None
+    if force_dict_roll:
+        if uid not in settings.admin_ids:
+            await cb.answer("Только для админов", show_alert=True)
+            return
+        admin_dict_roll_set(uid, enabled=True)
+        cfg = admin_dict_roll_get(uid)
+        roll_length = cfg.length
+        dict_len = cfg.length
+        flt = RollFilters()
+        lucky_spin = False
+    else:
+        roll_length, dict_len = resolve_roll_dictionary_length(
+            uid,
+            is_admin=uid in settings.admin_ids,
+            requested_length=length,
+        )
+        lucky_spin = db.is_luck_roll_active(uid)
+        flt = _roll_filters_obj(uid).normalized(max_len=roll_length)
+        if dict_len is not None:
+            flt = RollFilters()
+            lucky_spin = False
+
     max_attempts = 420 if is_plus else 140
     if getattr(checker, "uses_telethon", False):
         max_attempts = 900 if is_plus else 320
-    lucky_spin = db.is_luck_roll_active(uid)
-    flt = _roll_filters_obj(uid)
-    if is_plus and flt.active():
+    if is_plus and flt.active() and dict_len is None:
         max_attempts = min(1400, int(max_attempts * 1.45))
+    if dict_len is not None:
+        max_attempts = min(1600, int(max_attempts * 1.2))
 
-    await cb.message.edit_text(
-        _ui_frag_search_frame(0),
-        parse_mode="HTML",
-    )
+    frame = _ui_frag_search_frame(0)
+    if dict_len is not None:
+        frame = (
+            f"<b>Подбор из словаря</b> · {dict_len} букв\n\n"
+            + frame.split("\n\n", 1)[-1]
+            if "\n\n" in frame
+            else f"<b>Подбор из словаря</b> · {dict_len} букв\n\n{frame}"
+        )
+
+    await cb.message.edit_text(frame, parse_mode="HTML")
 
     chat_id = cb.message.chat.id
     msg_id = cb.message.message_id
@@ -1155,7 +1255,7 @@ async def _frag_run_roll_at_length(
             bot=bot,
             chat_id=chat_id,
             message_id=msg_id,
-            length=length,
+            length=roll_length,
             max_attempts=max_attempts,
             delay_s=settings.fragment_request_delay_s,
             lucky=lucky_spin,
@@ -1163,6 +1263,7 @@ async def _frag_run_roll_at_length(
             filters=flt,
             fragment_timeout_s=settings.fragment_roll_timeout_s,
             is_plus=is_plus,
+            dictionary_length=dict_len,
         )
     except Exception:
         log.exception("поиск ника fragment-режим")
@@ -1812,11 +1913,12 @@ async def _find_one_username_fragment(
     filters: RollFilters,
     fragment_timeout_s: int,
     is_plus: bool,
+    dictionary_length: int | None = None,
 ) -> tuple[str | None, int, bool]:
     """Подбирает один ник. Третий элемент — True, если сработал лимит по времени (3 мин)."""
     import time
 
-    lucky_effective = bool(lucky)
+    lucky_effective = bool(lucky) and dictionary_length not in (5, 6, 7)
     retry_sleep = min(delay_s, 0.04) if delay_s > 0 else 0.0
 
     seen: set[str] = set()
@@ -1833,6 +1935,7 @@ async def _find_one_username_fragment(
             lucky=lucky_effective,
             filters=filters,
             plus_full_cv=is_plus,
+            dictionary_length=dictionary_length,
         )
         if cand in seen:
             continue
@@ -1843,10 +1946,13 @@ async def _find_one_username_fragment(
         if attempts == 1 or now - last_edit >= 0.22:
             last_edit = now
             try:
+                prog = _ui_frag_search_frame(attempts)
+                if dictionary_length is not None:
+                    prog = f"<b>Словарь</b> · {dictionary_length} букв\n\n" + prog.split("\n\n", 1)[-1]
                 await bot.edit_message_text(
                     chat_id=chat_id,
                     message_id=message_id,
-                    text=_ui_frag_search_frame(attempts),
+                    text=prog,
                     parse_mode="HTML",
                 )
             except Exception:
@@ -1956,7 +2062,7 @@ async def _dispatch_fragment_menu(
             return
         await message.answer(
             _ui_frag_pick_length(),
-            reply_markup=kb_fragment_lengths(uid=uid, db=db),
+            reply_markup=kb_fragment_lengths(uid=uid, db=db, settings=settings),
             parse_mode="HTML",
         )
         return
@@ -2466,6 +2572,65 @@ async def on_callback_frag(
             )
         return
 
+    if data == "frag:dict" or data.startswith("frag:dict:"):
+        if uid not in settings.admin_ids:
+            await cb.answer("Только для администраторов", show_alert=True)
+            return
+        parts = data.split(":")
+        op = parts[2] if len(parts) > 2 else ""
+
+        async def _dict_panel() -> None:
+            await cb.message.edit_text(
+                _html_frag_dict_panel(uid),
+                parse_mode="HTML",
+                reply_markup=_kb_frag_dict_panel(uid),
+            )
+
+        if data == "frag:dict":
+            await _dict_panel()
+            return
+        if op == "back":
+            await cb.message.edit_text(
+                _ui_frag_pick_length(),
+                reply_markup=kb_fragment_lengths(uid=uid, db=db, settings=settings),
+                parse_mode="HTML",
+            )
+            return
+        if op == "toggle":
+            cur = admin_dict_roll_get(uid)
+            admin_dict_roll_set(uid, enabled=not cur.enabled)
+            await _dict_panel()
+            return
+        if op == "len" and len(parts) > 3:
+            try:
+                ln = int(parts[3])
+            except ValueError:
+                return
+            if ln in (5, 6, 7):
+                admin_dict_roll_set(uid, enabled=True, length=ln)
+            await _dict_panel()
+            return
+        if op == "roll":
+            cfg = admin_dict_roll_get(uid)
+            if not cfg.enabled:
+                await cb.answer(
+                    "Включите режим «Из словаря» (кнопка Вкл.)",
+                    show_alert=True,
+                )
+                return
+            await cb.answer()
+            await _frag_run_roll_at_length(
+                cb,
+                uid,
+                cfg.length,
+                db,
+                settings,
+                checker,
+                force_dict_roll=True,
+            )
+            return
+        return
+
     if data == "frag:filters" or data.startswith("frag:f:"):
         if not db.is_plus(uid):
             await cb.answer("Фильтры — только с подпиской PLUS", show_alert=True)
@@ -2488,7 +2653,7 @@ async def on_callback_frag(
         if op == "bak":
             await cb.message.edit_text(
                 _ui_frag_pick_length(),
-                reply_markup=kb_fragment_lengths(uid=uid, db=db),
+                reply_markup=kb_fragment_lengths(uid=uid, db=db, settings=settings),
                 parse_mode="HTML",
             )
             return

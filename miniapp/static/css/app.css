@@ -139,6 +139,18 @@ body {
   display: none !important;
 }
 
+.admin-dict-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.admin-dict-toggle input {
+  width: 18px;
+  height: 18px;
+}
+
 .main.hidden,
 .tab-bar.hidden {
   display: none !important;

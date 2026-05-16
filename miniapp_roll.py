@@ -25,10 +25,11 @@ async def find_one_username_fragment_miniapp(
     filters: RollFilters,
     fragment_timeout_s: int,
     is_plus: bool,
+    dictionary_length: int | None = None,
     on_progress: Callable[[int], Awaitable[None]] | None = None,
 ) -> tuple[str | None, int, bool]:
     """(username | None, attempts, timed_out)."""
-    lucky_effective = bool(lucky)
+    lucky_effective = bool(lucky) and dictionary_length not in (5, 6, 7)
     retry_sleep = min(delay_s, 0.04) if delay_s > 0 else 0.0
     seen: set[str] = set()
     attempts = 0
@@ -45,6 +46,7 @@ async def find_one_username_fragment_miniapp(
             lucky=lucky_effective,
             filters=filters,
             plus_full_cv=is_plus,
+            dictionary_length=dictionary_length,
         )
         if cand in seen:
             continue

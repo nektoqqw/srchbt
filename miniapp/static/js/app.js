@@ -24,6 +24,7 @@
   let state = {
     me: null,
     rollLen: 5,
+    dictRollLen: 5,
     refLink: "",
     admin: null,
     slotTimer: null,
@@ -261,10 +262,23 @@
       : "⏸ Пауза «Удачи» в подборе";
 
     const adminTab = document.querySelector(".tab-admin");
+    const adb = document.getElementById("adminDictBlock");
     if (me.is_admin) {
       adminTab.classList.remove("hidden");
+      adb.classList.remove("hidden");
+      const dr = me.admin_dict_roll || {};
+      const on = !!dr.enabled;
+      const ln = dr.length || 5;
+      state.dictRollLen = ln;
+      document.getElementById("admDictOn").checked = on;
+      document.getElementById("adminDictSummary").textContent =
+        dr.summary || (on ? `вкл. · ${ln} букв` : "выкл.");
+      document.querySelectorAll(".seg-item.dict-len").forEach((b) => {
+        b.classList.toggle("active", parseInt(b.dataset.dlen, 10) === ln);
+      });
     } else {
       adminTab.classList.add("hidden");
+      adb.classList.add("hidden");
     }
   }
 
@@ -522,8 +536,39 @@
       haptic("error");
       return;
     }
-    startRollAnimation(state.rollLen);
+    const animLen = r.roll_length || state.rollLen;
+    startRollAnimation(animLen);
+    if (r.dictionary_mode) {
+      document.getElementById("rollStatus").textContent = `Словарь · ${animLen} букв…`;
+    }
     pollRoll(r.job_id);
+  });
+
+  document.querySelectorAll(".seg-item.dict-len").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".seg-item.dict-len").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      state.dictRollLen = parseInt(btn.dataset.dlen, 10);
+      haptic("light");
+    });
+  });
+
+  document.getElementById("btnSaveAdminDict").addEventListener("click", async () => {
+    const r = await api("/api/admin/dict-roll", {
+      method: "POST",
+      body: JSON.stringify({
+        enabled: document.getElementById("admDictOn").checked,
+        length: state.dictRollLen,
+      }),
+    });
+    if (!r.ok) {
+      toast(r.error || "Ошибка");
+      haptic("error");
+      return;
+    }
+    toast("Режим «Из словаря» сохранён");
+    haptic("success");
+    loadMe();
   });
 
   document.getElementById("btnSaveFilters").addEventListener("click", async () => {

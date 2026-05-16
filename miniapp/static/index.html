@@ -77,6 +77,21 @@
             </select>
             <button type="button" class="btn btn-plain btn-sm" id="btnSaveFilters">Сохранить фильтры</button>
           </div>
+          <div id="adminDictBlock" class="filters hidden">
+            <h3 class="section-title-sm">Из словаря (админ)</h3>
+            <p class="caption" id="adminDictSummary">выкл.</p>
+            <label class="field-label admin-dict-toggle">
+              <input type="checkbox" id="admDictOn" />
+              Только слова из словаря
+            </label>
+            <p class="caption">Длина слова</p>
+            <div class="segmented" role="group" aria-label="Длина словаря">
+              <button type="button" class="seg-item dict-len active" data-dlen="5">5</button>
+              <button type="button" class="seg-item dict-len" data-dlen="6">6</button>
+              <button type="button" class="seg-item dict-len" data-dlen="7">7</button>
+            </div>
+            <button type="button" class="btn btn-plain btn-sm" id="btnSaveAdminDict">Применить</button>
+          </div>
           <div id="rollStage" class="roll-stage hidden" aria-live="polite">
             <div class="roll-ring" aria-hidden="true"></div>
             <div class="slot-row" id="slotRow"></div>

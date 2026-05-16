@@ -23,6 +23,7 @@ from miniapp_admin import (
     require_admin,
 )
 from miniapp_services import (
+    admin_dict_roll_update,
     cabinet_payload,
     create_checkout,
     delete_saved,
@@ -299,6 +300,31 @@ async def api_admin_dashboard(request: web.Request) -> web.Response:
     return _json(admin_dashboard(db, settings))
 
 
+async def api_admin_dict_roll(request: web.Request) -> web.Response:
+    uid, err = await _require_admin(request)
+    if err:
+        return err
+    if request.method == "GET":
+        from admin_dict_roll import admin_dict_roll_payload
+
+        return _json({"ok": True, **admin_dict_roll_payload(uid)})
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    if not isinstance(body, dict):
+        return _json({"ok": False, "error": "invalid_body"}, 400)
+    enabled = body.get("enabled")
+    length = body.get("length")
+    return _json(
+        admin_dict_roll_update(
+            uid,
+            enabled=enabled if enabled is not None else None,
+            length=int(length) if length is not None else None,
+        )
+    )
+
+
 async def api_admin_toggle_search(request: web.Request) -> web.Response:
     uid, err = await _require_admin(request)
     if err:
@@ -433,6 +459,8 @@ def setup_miniapp_routes(app: web.Application) -> None:
     app.router.add_post("/api/profile/name", api_profile_name)
     app.router.add_post("/api/payments/sync", api_sync_payments)
     app.router.add_get("/api/admin/dashboard", api_admin_dashboard)
+    app.router.add_get("/api/admin/dict-roll", api_admin_dict_roll)
+    app.router.add_post("/api/admin/dict-roll", api_admin_dict_roll)
     app.router.add_post("/api/admin/toggle-search", api_admin_toggle_search)
     app.router.add_post("/api/admin/grant", api_admin_grant)
     app.router.add_post("/api/admin/broadcast", api_admin_broadcast)
