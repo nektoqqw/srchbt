@@ -316,11 +316,13 @@ async def api_admin_dict_roll(request: web.Request) -> web.Response:
         return _json({"ok": False, "error": "invalid_body"}, 400)
     enabled = body.get("enabled")
     length = body.get("length")
+    popular_first = body.get("popular_first")
     return _json(
         admin_dict_roll_update(
             uid,
             enabled=enabled if enabled is not None else None,
             length=int(length) if length is not None else None,
+            popular_first=popular_first if popular_first is not None else None,
         )
     )
 

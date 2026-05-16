@@ -139,11 +139,55 @@ def random_english_dictionary_word(length: int) -> str:
 
 def shuffled_dictionary_words(length: int) -> list[str]:
     """Все слова длины length в случайном порядке (без повторов в одном проходе)."""
-    words = list(english_words_at_length(length))
-    if not words:
+    return dictionary_words_for_roll(length, popular_first=False)
+
+
+def _priority_path(length: int) -> Path:
+    return Path(__file__).resolve().parent / "data" / f"dict_priority_{length}.txt"
+
+
+@lru_cache(maxsize=3)
+def dictionary_priority_words(length: int) -> tuple[str, ...]:
+    """Упорядоченный список «популярных» слов из data/dict_priority_N.txt + fallback."""
+    if length not in (5, 6, 7):
+        return ()
+    seen: set[str] = set()
+    ordered: list[str] = []
+    path = _priority_path(length)
+    if path.is_file():
+        with path.open(encoding="utf-8") as f:
+            for line in f:
+                raw = line.split("#", 1)[0].strip().lower()
+                if not raw.isalpha() or len(raw) != length:
+                    continue
+                if raw in seen:
+                    continue
+                seen.add(raw)
+                ordered.append(raw)
+    for w in _FALLBACK:
+        if len(w) == length and w not in seen:
+            seen.add(w)
+            ordered.append(w)
+    return tuple(ordered)
+
+
+def dictionary_words_for_roll(length: int, *, popular_first: bool = True) -> list[str]:
+    """
+    Слова для админ-крутки без повторов.
+    popular_first: сначала приоритетный список, затем остальной словарь (перемешан).
+    """
+    all_set = set(english_words_at_length(length))
+    if not all_set:
         return []
-    random.shuffle(words)
-    return words
+    if not popular_first:
+        out = list(all_set)
+        random.shuffle(out)
+        return out
+    priority = [w for w in dictionary_priority_words(length) if w in all_set]
+    seen = set(priority)
+    rest = [w for w in all_set if w not in seen]
+    random.shuffle(rest)
+    return priority + rest
 
 
 def dictionary_word_count(length: int) -> int:

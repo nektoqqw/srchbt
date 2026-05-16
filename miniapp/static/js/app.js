@@ -271,6 +271,8 @@
       const ln = dr.length || 5;
       state.dictRollLen = ln;
       document.getElementById("admDictOn").checked = on;
+      document.getElementById("admDictPop").checked =
+        dr.popular_first !== false;
       document.getElementById("adminDictSummary").textContent =
         dr.summary || (on ? `вкл. · ${ln} букв` : "выкл.");
       document.querySelectorAll(".seg-item.dict-len").forEach((b) => {
@@ -559,6 +561,7 @@
       body: JSON.stringify({
         enabled: document.getElementById("admDictOn").checked,
         length: state.dictRollLen,
+        popular_first: document.getElementById("admDictPop").checked,
       }),
     });
     if (!r.ok) {

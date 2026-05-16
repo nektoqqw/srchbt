@@ -7,7 +7,8 @@ import logging
 import time
 from typing import Any, Callable, Awaitable
 
-from english_dictionary import shuffled_dictionary_words
+from admin_dict_roll import admin_dict_roll_get
+from english_dictionary import dictionary_words_for_roll
 from fragment_scraper import username_listed_on_fragment
 from roll_filters import RollFilters, generate_roll_candidate
 
@@ -29,6 +30,8 @@ async def find_one_username_fragment_miniapp(
     fragment_timeout_s: int,
     is_plus: bool,
     dictionary_length: int | None = None,
+    dict_popular_first: bool = True,
+    dict_roll_uid: int | None = None,
     on_progress: Callable[[int], Awaitable[None]] | None = None,
 ) -> tuple[str | None, int, bool]:
     """(username | None, attempts, timed_out)."""
@@ -45,7 +48,12 @@ async def find_one_username_fragment_miniapp(
     dict_pool: list[str] = []
     dict_i = 0
     if dict_mode:
-        dict_pool = shuffled_dictionary_words(dictionary_length)
+        popular_first = dict_popular_first
+        if dict_roll_uid is not None:
+            popular_first = admin_dict_roll_get(dict_roll_uid).popular_first
+        dict_pool = dictionary_words_for_roll(
+            dictionary_length, popular_first=popular_first
+        )
         max_attempts = min(max_attempts, max(len(dict_pool), 1))
 
     while attempts < max_attempts:

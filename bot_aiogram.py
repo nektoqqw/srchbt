@@ -707,18 +707,24 @@ def _html_frag_dict_panel(uid: int) -> str:
         f"Длина: <b>{d.length}</b> букв\n\n"
         "Кандидаты — только реальные английские слова из словаря "
         f"(<code>english_words_5_7</code>), не случайные буквы.\n\n"
-        "<i>«Крутить» — подбор по выбранной длине. Обычные кнопки 5/6/7 ниже — без словаря.</i>"
+        "<i>«⭐ Популярные» — сначала apple, money, ghost… затем остальной словарь. "
+        "«Крутить» — подбор по выбранной длине.</i>"
     )
 
 
 def _kb_frag_dict_panel(uid: int) -> InlineKeyboardMarkup:
     d = admin_dict_roll_get(uid)
+    pop_lbl = "⭐ Популярные первыми ✓" if d.popular_first else "↻ Случайный порядок"
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
                     text=("📖 Выкл." if d.enabled else "📖 Вкл."),
                     callback_data="frag:dict:toggle",
+                ),
+                InlineKeyboardButton(
+                    text=pop_lbl,
+                    callback_data="frag:dict:pop",
                 ),
             ],
             [
@@ -1266,6 +1272,7 @@ async def _frag_run_roll_at_length(
             fragment_timeout_s=settings.fragment_roll_timeout_s,
             is_plus=is_plus,
             dictionary_length=dict_len,
+            dict_roll_uid=uid if dict_len is not None else None,
         )
     except Exception:
         log.exception("поиск ника fragment-режим")
@@ -1916,11 +1923,13 @@ async def _find_one_username_fragment(
     fragment_timeout_s: int,
     is_plus: bool,
     dictionary_length: int | None = None,
+    dict_roll_uid: int | None = None,
 ) -> tuple[str | None, int, bool]:
     """Подбирает один ник. Третий элемент — True, если сработал лимит по времени."""
     import time
 
-    from english_dictionary import shuffled_dictionary_words
+    from admin_dict_roll import admin_dict_roll_get
+    from english_dictionary import dictionary_words_for_roll
     from miniapp_roll import DICT_ROLL_SEARCH_WALL_S
 
     dict_mode = dictionary_length in (5, 6, 7)
@@ -1936,7 +1945,12 @@ async def _find_one_username_fragment(
     dict_pool: list[str] = []
     dict_i = 0
     if dict_mode:
-        dict_pool = shuffled_dictionary_words(dictionary_length)
+        popular_first = True
+        if dict_roll_uid is not None:
+            popular_first = admin_dict_roll_get(dict_roll_uid).popular_first
+        dict_pool = dictionary_words_for_roll(
+            dictionary_length, popular_first=popular_first
+        )
         max_attempts = min(max_attempts, max(len(dict_pool), 1))
 
     while attempts < max_attempts:
@@ -2617,6 +2631,11 @@ async def on_callback_frag(
         if op == "toggle":
             cur = admin_dict_roll_get(uid)
             admin_dict_roll_set(uid, enabled=not cur.enabled)
+            await _dict_panel()
+            return
+        if op == "pop":
+            cur = admin_dict_roll_get(uid)
+            admin_dict_roll_set(uid, popular_first=not cur.popular_first)
             await _dict_panel()
             return
         if op == "len" and len(parts) > 3:

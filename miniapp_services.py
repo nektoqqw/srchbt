@@ -12,6 +12,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from admin_dict_roll import (
+    admin_dict_roll_get,
     admin_dict_roll_payload,
     admin_dict_roll_set,
     resolve_roll_dictionary_length,
@@ -206,9 +207,18 @@ def admin_dict_roll_update(
     *,
     enabled: bool | None = None,
     length: int | None = None,
+    popular_first: bool | None = None,
 ) -> dict[str, Any]:
-    cfg = admin_dict_roll_set(uid, enabled=enabled, length=length)
-    return {"ok": True, **admin_dict_roll_payload(uid), "enabled": cfg.enabled, "length": cfg.length}
+    cfg = admin_dict_roll_set(
+        uid, enabled=enabled, length=length, popular_first=popular_first
+    )
+    return {
+        "ok": True,
+        **admin_dict_roll_payload(uid),
+        "enabled": cfg.enabled,
+        "length": cfg.length,
+        "popular_first": cfg.popular_first,
+    }
 
 
 def set_filters(uid: int, *, prefix: str, suffix: str, digits: str) -> dict[str, Any]:
@@ -473,6 +483,7 @@ async def start_roll_job(
             async def on_prog(n: int) -> None:
                 job.progress = n
 
+            cfg = admin_dict_roll_get(uid) if dict_len is not None else None
             found, attempts, timed_out = await find_one_username_fragment_miniapp(
                 length=roll_length,
                 max_attempts=max_attempts,
@@ -483,6 +494,8 @@ async def start_roll_job(
                 fragment_timeout_s=settings.fragment_roll_timeout_s,
                 is_plus=is_plus,
                 dictionary_length=dict_len,
+                dict_popular_first=cfg.popular_first if cfg else True,
+                dict_roll_uid=uid if dict_len is not None else None,
                 on_progress=on_prog,
             )
             if not timed_out:
