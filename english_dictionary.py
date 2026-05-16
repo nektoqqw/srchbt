@@ -135,3 +135,16 @@ def random_english_dictionary_word(length: int) -> str:
     if not pool:
         raise RuntimeError(f"Словарь пуст для длины {length}")
     return random.choice(pool)
+
+
+def shuffled_dictionary_words(length: int) -> list[str]:
+    """Все слова длины length в случайном порядке (без повторов в одном проходе)."""
+    words = list(english_words_at_length(length))
+    if not words:
+        return []
+    random.shuffle(words)
+    return words
+
+
+def dictionary_word_count(length: int) -> int:
+    return len(english_words_at_length(length))

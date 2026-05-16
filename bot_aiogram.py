@@ -1233,7 +1233,9 @@ async def _frag_run_roll_at_length(
     if is_plus and flt.active() and dict_len is None:
         max_attempts = min(1400, int(max_attempts * 1.45))
     if dict_len is not None:
-        max_attempts = min(1600, int(max_attempts * 1.2))
+        from english_dictionary import dictionary_word_count
+
+        max_attempts = dictionary_word_count(dict_len)
 
     frame = _ui_frag_search_frame(0)
     if dict_len is not None:
@@ -1915,31 +1917,47 @@ async def _find_one_username_fragment(
     is_plus: bool,
     dictionary_length: int | None = None,
 ) -> tuple[str | None, int, bool]:
-    """Подбирает один ник. Третий элемент — True, если сработал лимит по времени (3 мин)."""
+    """Подбирает один ник. Третий элемент — True, если сработал лимит по времени."""
     import time
 
-    lucky_effective = bool(lucky) and dictionary_length not in (5, 6, 7)
+    from english_dictionary import shuffled_dictionary_words
+    from miniapp_roll import DICT_ROLL_SEARCH_WALL_S
+
+    dict_mode = dictionary_length in (5, 6, 7)
+    lucky_effective = bool(lucky) and not dict_mode
     retry_sleep = min(delay_s, 0.04) if delay_s > 0 else 0.0
 
     seen: set[str] = set()
     attempts = 0
     last_edit = 0.0
-    deadline = time.monotonic() + float(FRAGMENT_USERNAME_SEARCH_WALL_S)
+    wall_s = DICT_ROLL_SEARCH_WALL_S if dict_mode else FRAGMENT_USERNAME_SEARCH_WALL_S
+    deadline = time.monotonic() + float(wall_s)
     uses_th = getattr(checker, "uses_telethon", False)
+    dict_pool: list[str] = []
+    dict_i = 0
+    if dict_mode:
+        dict_pool = shuffled_dictionary_words(dictionary_length)
+        max_attempts = min(max_attempts, max(len(dict_pool), 1))
+
     while attempts < max_attempts:
         if time.monotonic() >= deadline:
             return None, attempts, True
 
-        cand = generate_roll_candidate(
-            length,
-            lucky=lucky_effective,
-            filters=filters,
-            plus_full_cv=is_plus,
-            dictionary_length=dictionary_length,
-        )
-        if cand in seen:
-            continue
-        seen.add(cand)
+        if dict_mode:
+            if dict_i >= len(dict_pool):
+                return None, attempts, False
+            cand = dict_pool[dict_i]
+            dict_i += 1
+        else:
+            cand = generate_roll_candidate(
+                length,
+                lucky=lucky_effective,
+                filters=filters,
+                plus_full_cv=is_plus,
+            )
+            if cand in seen:
+                continue
+            seen.add(cand)
         attempts += 1
 
         now = time.monotonic()

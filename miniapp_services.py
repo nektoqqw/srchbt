@@ -465,6 +465,10 @@ async def start_roll_job(
             max_attempts = 420 if is_plus else 140
             if getattr(checker, "uses_telethon", False):
                 max_attempts = min(1400, int(max_attempts * 1.45))
+            if dict_len is not None:
+                from english_dictionary import dictionary_word_count
+
+                max_attempts = dictionary_word_count(dict_len)
 
             async def on_prog(n: int) -> None:
                 job.progress = n
